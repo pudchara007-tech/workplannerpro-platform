@@ -46,8 +46,10 @@ export default function Sidebar({ displayName }: { displayName: string }) {
 
       <aside className={`fixed md:sticky top-0 z-50 md:z-auto w-64 ${collapsed ? "md:w-[70px]" : "md:w-56"} shrink-0 bg-bg-1 border-r border-line flex flex-col h-screen transition-all duration-200 ${open ? "translate-x-0" : "-translate-x-full"} md:translate-x-0`}>
         <div className={`px-3 py-4 flex items-center gap-2 border-b border-line ${collapsed ? "md:justify-center" : ""}`}>
-          <button className="hidden md:block text-xl text-gray-400 hover:text-gray-100 shrink-0" onClick={toggleRail} aria-label="ย่อ/ขยายเมนู" title="ย่อ/ขยายเมนู">☰</button>
-          <img src="/logo.svg" alt="Mysthron" className={`w-7 h-7 shrink-0 ${collapsed ? "md:hidden" : ""}`} />
+          <button onClick={toggleRail} title="ย่อ/ขยายเมนู" aria-label="ย่อ/ขยายเมนู"
+            className="shrink-0 hover:opacity-75 transition" style={{ background: "none", border: "none", padding: 0, cursor: "pointer" }}>
+            <img src="/logo.svg" alt="Mysthron" className="w-8 h-8" />
+          </button>
           <span className={`font-semibold flex-1 ${hideOnRail}`}>Mysthron</span>
           <button className="md:hidden text-xl text-gray-400" onClick={() => setOpen(false)} aria-label="ปิด">✕</button>
         </div>

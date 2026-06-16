@@ -77,7 +77,7 @@ export default function ProjectDetailClient({ project }: { project: any }) {
     setEditTask(t);
     setEf({ name: t.name || "", building: t.building || "", floor: t.floor || "", team: t.team || "",
       start_date: t.start_date || "", end_date: t.end_date || "", category: a.category || "",
-      person_count: a.person_count ?? "", blocked: !!t.blocked, materials: a.materials || "", note: t.note || "" });
+      person_count: a.person_count ?? "", blocked: !!t.blocked, materials: a.materials || "", note: t.note || "", photos: a.photos || [] });
   }
   async function saveEdit() {
     if (!editTask) return;
@@ -85,7 +85,7 @@ export default function ProjectDetailClient({ project }: { project: any }) {
       name: ef.name.trim() || editTask.name, building: ef.building || null, floor: ef.floor || null, team: ef.team || null,
       start_date: ef.start_date || null, end_date: ef.end_date || null, category: ef.category || null,
       person_count: ef.person_count === "" ? null : Number(ef.person_count), blocked: !!ef.blocked,
-      materials: ef.materials || null, note: ef.note || null, updated_at: new Date().toISOString(),
+      materials: ef.materials || null, note: ef.note || null, photos: ef.photos || [], updated_at: new Date().toISOString(),
     };
     setTasks((p) => p.map((x) => (x.id === editTask.id ? ({ ...x, ...patch } as Task) : x)));
     const id = editTask.id;
@@ -109,6 +109,35 @@ export default function ProjectDetailClient({ project }: { project: any }) {
     setTasks((p) => p.map((x: any) => (x.id === t.id ? { ...x, insp_completed: date || null } : x)));
     setRoomModal((m: any) => (m ? { ...m, tasks: m.tasks.map((x: any) => (x.id === t.id ? { ...x, insp_completed: date || null } : x)) } : m));
     await supabase.from("tasks").update({ insp_completed: date || null }).eq("id", t.id);
+  }
+
+  // ── อัปโหลดรูป (Supabase Storage) ──
+  async function uploadPhoto(file: File, folder: string) {
+    const safe = file.name.replace(/[^a-zA-Z0-9.]/g, "_");
+    const path = `${project.id}/${folder}/${Date.now()}-${safe}`;
+    const { error } = await supabase.storage.from("photos").upload(path, file);
+    if (error) { alert("อัปโหลดไม่สำเร็จ: " + error.message); return null; }
+    return supabase.storage.from("photos").getPublicUrl(path).data.publicUrl;
+  }
+  async function addEditPhoto(file: File) {
+    const url = await uploadPhoto(file, "task"); if (!url) return;
+    setEf((e: any) => ({ ...e, photos: [...(e.photos || []), url] }));
+  }
+  function removeEditPhoto(url: string) { setEf((e: any) => ({ ...e, photos: (e.photos || []).filter((u: string) => u !== url) })); }
+  async function addRoomPhoto(file: File) {
+    if (!roomModal) return; const t = roomModal.tasks[0];
+    const url = await uploadPhoto(file, "room"); if (!url) return;
+    const photos = [...(t.photos || []), url];
+    setTasks((p) => p.map((x: any) => (x.id === t.id ? { ...x, photos } : x)));
+    setRoomModal((m: any) => ({ ...m, tasks: m.tasks.map((x: any, i: number) => (i === 0 ? { ...x, photos } : x)) }));
+    await supabase.from("tasks").update({ photos }).eq("id", t.id);
+  }
+  async function removeRoomPhoto(url: string) {
+    if (!roomModal) return; const t = roomModal.tasks[0];
+    const photos = (t.photos || []).filter((u: string) => u !== url);
+    setTasks((p) => p.map((x: any) => (x.id === t.id ? { ...x, photos } : x)));
+    setRoomModal((m: any) => ({ ...m, tasks: m.tasks.map((x: any, i: number) => (i === 0 ? { ...x, photos } : x)) }));
+    await supabase.from("tasks").update({ photos }).eq("id", t.id);
   }
   // ── inspection builder: เพิ่ม/ลบ พื้นที่ ──
   const [zoneForm, setZoneForm] = useState<any>(null);
@@ -542,7 +571,20 @@ export default function ProjectDetailClient({ project }: { project: any }) {
                   </div>
                 );
               })}
-              <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>📝 หมายเหตุ + 📷 รูปประกอบ — เร็ว ๆ นี้</div>
+              <div className="form-group" style={{ marginTop: 6 }}>
+                <label className="form-label">📷 รูปประกอบห้อง</label>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {((roomModal.tasks[0]?.photos) || []).map((url: string) => (
+                    <div key={url} style={{ position: "relative" }}>
+                      <img src={url} alt="" style={{ width: 70, height: 70, objectFit: "cover", borderRadius: 8, border: "1px solid var(--border)" }} />
+                      <button onClick={() => removeRoomPhoto(url)} style={{ position: "absolute", top: -6, right: -6, background: "var(--red)", color: "#fff", border: "none", borderRadius: "50%", width: 20, height: 20, cursor: "pointer", fontSize: 12 }}>×</button>
+                    </div>
+                  ))}
+                  <label style={{ width: 70, height: 70, border: "1px dashed var(--border-light)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "var(--text-3)", fontSize: 24 }}>
+                    +<input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) addRoomPhoto(f); e.currentTarget.value = ""; }} />
+                  </label>
+                </div>
+              </div>
               <button className="header-btn primary" style={{ marginTop: 6 }} onClick={() => setRoomModal(null)}>ปิด</button>
             </div>
           </div>
@@ -632,6 +674,20 @@ export default function ProjectDetailClient({ project }: { project: any }) {
                 <textarea className="form-input" rows={2} value={ef.materials} onChange={(e) => setEf({ ...ef, materials: e.target.value })} placeholder="รายการวัสดุที่ต้องใช้/สั่ง" style={{ resize: "vertical" }} /></div>
               <div className="form-group"><label className="form-label">หมายเหตุ</label>
                 <textarea className="form-input" rows={2} value={ef.note} onChange={(e) => setEf({ ...ef, note: e.target.value })} style={{ resize: "vertical" }} /></div>
+              <div className="form-group">
+                <label className="form-label">📷 รูปประกอบ</label>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {(ef.photos || []).map((url: string) => (
+                    <div key={url} style={{ position: "relative" }}>
+                      <img src={url} alt="" style={{ width: 70, height: 70, objectFit: "cover", borderRadius: 8, border: "1px solid var(--border)" }} />
+                      <button onClick={() => removeEditPhoto(url)} style={{ position: "absolute", top: -6, right: -6, background: "var(--red)", color: "#fff", border: "none", borderRadius: "50%", width: 20, height: 20, cursor: "pointer", fontSize: 12 }}>×</button>
+                    </div>
+                  ))}
+                  <label style={{ width: 70, height: 70, border: "1px dashed var(--border-light)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "var(--text-3)", fontSize: 24 }}>
+                    +<input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) addEditPhoto(f); e.currentTarget.value = ""; }} />
+                  </label>
+                </div>
+              </div>
               <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
                 <button className="header-btn primary" style={{ flex: 1 }} onClick={saveEdit}>บันทึก</button>
                 <button className="header-btn danger" onClick={() => { const id = editTask.id; setEditTask(null); del(id); }}>ลบ</button>
