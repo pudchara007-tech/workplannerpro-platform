@@ -18,7 +18,11 @@ function Bar({ pct }: { pct: number }) {
   );
 }
 
-export default async function ReportPage({ params }: { params: { id: string } }) {
+const WEATHER: Record<string, string> = { sunny: "☀️", cloudy: "⛅", rain: "🌧️", storm: "⛈️", hot: "🥵" };
+const TH_DOW = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
+
+export default async function ReportPage({ params, searchParams }: { params: { id: string }; searchParams: { type?: string } }) {
+  const weekly = searchParams?.type === "weekly";
   const supabase = createClient();
   const { data: project } = await supabase.from("projects").select("*").eq("id", params.id).single();
   if (!project) notFound();
@@ -47,6 +51,12 @@ export default async function ReportPage({ params }: { params: { id: string } })
 
   const now = new Date();
   const dateStr = `${fmt(today)} เวลา ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")} น.`;
+
+  // weekly: 7-day window + weather
+  const weatherLog: Record<string, string> = project.settings?.weatherLog || {};
+  const weekDays: string[] = [];
+  for (let i = 6; i >= 0; i--) { const d = new Date(); d.setDate(d.getDate() - i); weekDays.push(d.toISOString().slice(0, 10)); }
+  const tasksOnDay = (ds: string) => regular.filter((t: any) => t.start_date && t.end_date && t.start_date <= ds && t.end_date >= ds);
 
   const statusBadge = (t: any) => {
     if (t.done) return { t: "✅ เสร็จแล้ว", bg: "#dcfce7", c: "#15803d" };
@@ -91,7 +101,7 @@ export default async function ReportPage({ params }: { params: { id: string } })
         <div style={{ flex: 1 }}>
           <h1 style={{ fontSize: 20, fontWeight: 700, margin: 0 }}>{project.name}</h1>
           {project.description && <div style={{ fontSize: 14 }}>{project.description}</div>}
-          <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>📄 รายงานความคืบหน้าโครงการ · ออกรายงาน: {dateStr}</div>
+          <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>{weekly ? "📅 รายงานประจำสัปดาห์" : "📄 รายงานความคืบหน้าโครงการ"} · ออกรายงาน: {dateStr}</div>
         </div>
         {project.logo && <img src={project.logo} alt="logo" style={{ height: 56, objectFit: "contain" }} />}
       </div>
@@ -139,6 +149,30 @@ export default async function ReportPage({ params }: { params: { id: string } })
             <tbody>
               <tr><th style={{ width: 200 }}>จุดตรวจทั้งหมด</th><td>{inspTotal} จุด</td></tr>
               <tr><th>ผ่านแล้ว</th><td>{inspPassed} จุด ({inspTotal ? Math.round((inspPassed / inspTotal) * 100) : 0}%)</td></tr>
+            </tbody>
+          </table>
+        </>
+      )}
+
+      {weekly && (
+        <>
+          <div className="rp-sec">📅 สรุปรายวัน (7 วันล่าสุด)</div>
+          <table className="rp-table">
+            <thead><tr><th style={{ width: 120 }}>วันที่</th><th style={{ width: 60 }}>อากาศ</th><th style={{ width: 70 }}>งาน</th><th>รายการ</th></tr></thead>
+            <tbody>
+              {weekDays.map((ds) => {
+                const dt = tasksOnDay(ds);
+                const d = new Date(ds);
+                const w = weatherLog[ds] ? WEATHER[weatherLog[ds]] : "-";
+                return (
+                  <tr key={ds}>
+                    <td>{TH_DOW[d.getDay()]} {fmtShort(ds)}{ds === today ? " (วันนี้)" : ""}</td>
+                    <td style={{ textAlign: "center", fontSize: 16 }}>{w}</td>
+                    <td>{dt.length}</td>
+                    <td style={{ fontSize: 11.5 }}>{dt.length ? dt.map((t: any) => t.name).join(", ") : <span style={{ color: "var(--text-3)" }}>—</span>}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </>

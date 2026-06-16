@@ -683,6 +683,11 @@ export default function ProjectDetailClient({ project }: { project: any }) {
         const gap = tActual - tPlanned;
         return (
           <div style={{ marginTop: 16 }}>
+            {/* ปุ่มออกรายงาน */}
+            <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
+              <a href={`/projects/${project.id}/report?type=weekly`} className="header-btn primary">📅 Export Weekly PDF</a>
+              <a href={`/projects/${project.id}/report`} className="header-btn primary">📄 Export Full PDF</a>
+            </div>
             <div className="kpi-row" style={{ padding: 0, marginBottom: 14 }}>
               <div className="kpi"><div className="kpi-label">ตามแผนวันนี้</div><div className="kpi-value" style={{ color: "var(--accent)" }}>{tPlanned.toFixed(1)}%</div></div>
               <div className="kpi"><div className="kpi-label">ทำได้จริง</div><div className="kpi-value" style={{ color: "var(--green)" }}>{tActual.toFixed(1)}%</div></div>
@@ -690,7 +695,10 @@ export default function ProjectDetailClient({ project }: { project: any }) {
               <div className="kpi"><div className="kpi-label">เสร็จ / ทั้งหมด</div><div className="kpi-value">{done}<span style={{ fontSize: 13, color: "var(--text-3)" }}> / {tot}</span></div></div>
             </div>
             <div className="day-detail">
-              <h3 style={{ margin: "0 0 10px" }}>📈 S-Curve (แผน vs จริง)</h3>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <h3 style={{ margin: "0 0 10px" }}>📈 S-Curve · Planned vs Actual</h3>
+                <div style={{ fontSize: 12 }}><span style={{ color: "#3b82f6" }}>┄ Planned</span> <span style={{ color: "var(--green)" }}>▬ Actual</span></div>
+              </div>
               <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto" }} preserveAspectRatio="xMidYMid meet">
                 {[0, 25, 50, 75, 100].map((p) => (
                   <g key={p}>
@@ -702,7 +710,7 @@ export default function ProjectDetailClient({ project }: { project: any }) {
                   <text key={i} x={xS(i)} y={M.t + ih + 18} textAnchor="middle" fontSize="10" fill="var(--text-3)">{new Date(d).getDate()}/{new Date(d).getMonth() + 1}</text>
                 ) : null)}
                 <path d={`${plannedPath} L${xS(dates.length - 1)} ${yS(0)} L${xS(0)} ${yS(0)} Z`} fill="var(--accent)" fillOpacity="0.08" />
-                <path d={plannedPath} fill="none" stroke="var(--accent)" strokeWidth="2.5" />
+                <path d={plannedPath} fill="none" stroke="#3b82f6" strokeWidth="2.5" strokeDasharray="6 4" />
                 {actualPath && <path d={actualPath} fill="none" stroke="var(--green)" strokeWidth="2.5" />}
                 {tIdx >= 0 && <line x1={xS(tIdx)} y1={M.t} x2={xS(tIdx)} y2={M.t + ih} stroke="var(--red)" strokeDasharray="4 3" strokeOpacity="0.7" />}
                 {tIdx >= 0 && <text x={xS(tIdx)} y={M.t - 6} textAnchor="middle" fontSize="10" fill="var(--red)">วันนี้</text>}
@@ -712,22 +720,92 @@ export default function ProjectDetailClient({ project }: { project: any }) {
                 <span style={{ color: "var(--green)" }}>▬ ทำได้จริง</span>
               </div>
             </div>
+            {/* Burndown + forecast */}
+            {(() => {
+              const isWork = (ds: string) => !checkHoliday(ds).isHoliday;
+              const workDaysBetween = (a: string, b: string) => { let n = 0; const c = new Date(a), e = new Date(b); while (c <= e) { if (isWork(ymd(c))) n++; c.setDate(c.getDate() + 1); } return n; };
+              const totWork = workDaysBetween(minS, maxE);
+              let elapsed = 0;
+              const bpts = dates.map((d) => {
+                const ideal = totWork > 0 ? Math.max(0, tot - tot * elapsed / totWork) : tot;
+                const actualRem = d > today ? null : items.filter((t) => { const c = compDate(t); return !t.done || !c || c > d; }).length;
+                if (isWork(d)) elapsed++;
+                return { d, ideal, actualRem };
+              });
+              const tIdxB = dates.indexOf(today);
+              const remNow = items.filter((t) => !t.done).length;
+              const doneNow = tot - remNow;
+              const wSinceStart = workDaysBetween(minS, today > maxE ? maxE : today);
+              const velocity = wSinceStart > 0 ? doneNow / wSinceStart : 0;
+              let finishDate = maxE, daysOver = 0;
+              if (velocity > 0 && remNow > 0) {
+                const need = Math.ceil(remNow / velocity);
+                const fd = new Date(today); let left = need;
+                while (left > 0) { fd.setDate(fd.getDate() + 1); if (isWork(ymd(fd))) left--; }
+                finishDate = ymd(fd);
+                daysOver = Math.round((new Date(finishDate).getTime() - new Date(maxE).getTime()) / 86400000);
+              }
+              const BW = 820, BH = 300, BM = { t: 20, r: 20, b: 36, l: 36 };
+              const biw = BW - BM.l - BM.r, bih = BH - BM.t - BM.b;
+              const bx = (i: number) => BM.l + (dates.length <= 1 ? 0 : i / (dates.length - 1) * biw);
+              const by = (v: number) => BM.t + (tot - v) / tot * bih;
+              const idealPath = bpts.map((p, i) => `${i === 0 ? "M" : "L"}${bx(i).toFixed(1)} ${by(p.ideal).toFixed(1)}`).join(" ");
+              const aP = bpts.map((p, i) => p.actualRem !== null ? [bx(i), by(p.actualRem)] : null).filter(Boolean) as number[][];
+              const actPath = aP.map((p, i) => `${i === 0 ? "M" : "L"}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(" ");
+              let fcPath = "";
+              if (tIdxB >= 0 && remNow > 0 && velocity > 0) {
+                const fDays = Math.round((new Date(finishDate).getTime() - new Date(minS).getTime()) / 86400000);
+                const fx = BM.l + fDays / Math.max(1, dates.length - 1) * biw;
+                fcPath = `M${bx(tIdxB).toFixed(1)} ${by(remNow).toFixed(1)} L${fx.toFixed(1)} ${by(0).toFixed(1)}`;
+              }
+              return (
+                <div className="day-detail" style={{ marginTop: 14 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <h3 style={{ margin: "0 0 10px" }}>📉 Burndown — งานคงเหลือ vs เวลา</h3>
+                    <div style={{ fontSize: 12 }}><span style={{ color: "#3b82f6" }}>┄ Ideal</span> <span style={{ color: "var(--green)" }}>▬ จริง</span> <span style={{ color: "#f97316" }}>┄ คาดการณ์</span></div>
+                  </div>
+                  <svg viewBox={`0 0 ${BW} ${BH}`} style={{ width: "100%", height: "auto" }} preserveAspectRatio="xMidYMid meet">
+                    {[0, 0.25, 0.5, 0.75, 1].map((r) => (
+                      <g key={r}>
+                        <line x1={BM.l} y1={BM.t + r * bih} x2={BM.l + biw} y2={BM.t + r * bih} stroke="var(--border)" strokeOpacity="0.4" />
+                        <text x={BM.l - 6} y={BM.t + r * bih + 4} textAnchor="end" fontSize="10" fill="var(--text-3)">{Math.round(tot * (1 - r))}</text>
+                      </g>
+                    ))}
+                    <path d={idealPath} fill="none" stroke="#3b82f6" strokeWidth="2" strokeDasharray="4 3" opacity="0.6" />
+                    {actPath && <path d={actPath} fill="none" stroke="var(--green)" strokeWidth="2.5" />}
+                    {fcPath && <path d={fcPath} fill="none" stroke="#f97316" strokeWidth="2" strokeDasharray="3 4" opacity="0.85" />}
+                    {tIdxB >= 0 && <line x1={bx(tIdxB)} y1={BM.t} x2={bx(tIdxB)} y2={BM.t + bih} stroke="var(--red)" strokeDasharray="3 3" strokeOpacity="0.6" />}
+                  </svg>
+                  <div className="kpi-row" style={{ padding: 0, marginTop: 12 }}>
+                    <div className="kpi"><div className="kpi-label">เหลือ</div><div className="kpi-value">{remNow}<span style={{ fontSize: 13, color: "var(--text-3)" }}> / {tot}</span></div></div>
+                    <div className="kpi"><div className="kpi-label">DEADLINE</div><div className="kpi-value" style={{ fontSize: 18 }}>{fmtShort(maxE)}</div></div>
+                    <div className="kpi"><div className="kpi-label">VELOCITY</div><div className="kpi-value" style={{ fontSize: 18 }}>{velocity.toFixed(1)}<span style={{ fontSize: 11, color: "var(--text-3)" }}> งาน/วัน</span></div></div>
+                    <div className="kpi"><div className="kpi-label">คาดเสร็จ</div><div className="kpi-value" style={{ fontSize: 18 }}>{fmtShort(finishDate)}</div></div>
+                    <div className="kpi"><div className="kpi-label">VS DEADLINE</div><div className="kpi-value" style={{ fontSize: 18, color: daysOver > 0 ? "var(--red)" : "var(--green)" }}>{daysOver > 0 ? `+${daysOver}d ช้า` : daysOver < 0 ? `${daysOver}d เร็ว` : "ตรงแผน"}</div></div>
+                  </div>
+                </div>
+              );
+            })()}
             {/* ความคืบหน้ารายอาคาร */}
             <div className="day-detail" style={{ marginTop: 14 }}>
-              <h3 style={{ margin: "0 0 10px" }}>🏢 ความคืบหน้ารายอาคาร</h3>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <h3 style={{ margin: "0 0 10px" }}>🏢 Progress รายอาคาร</h3>
+                <div style={{ fontSize: 12 }}><span style={{ color: "var(--green)" }}>▬ เสร็จจริง</span> <span style={{ color: "#3b82f6" }}>┃ ควรเสร็จตามแผน</span></div>
+              </div>
               {buildings.map((b) => {
                 const bt = regular.filter((t) => t.building === b);
                 if (!bt.length) return null;
                 const bd = bt.filter((t) => t.done).length;
                 const bp = Math.round(bd / bt.length * 100);
+                const bPlan = Math.round(bt.filter((t) => t.end_date && t.end_date <= today).length / bt.length * 100);
                 return (
-                  <div key={b} style={{ marginBottom: 10 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
-                      <strong>อาคาร {b}</strong><span className="muted">{bd}/{bt.length} ({bp}%)</span>
+                  <div key={b} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                    <strong style={{ width: 70, fontSize: 13 }}>อาคาร {b}</strong>
+                    <div style={{ flex: 1, position: "relative", height: 16, background: "var(--bg-3)", borderRadius: 8, overflow: "hidden" }}>
+                      <div style={{ width: `${bp}%`, height: "100%", background: "var(--green)" }} />
+                      <div style={{ position: "absolute", top: -2, bottom: -2, left: `${bPlan}%`, width: 2, background: "#3b82f6" }} title={`ควรเสร็จ ${bPlan}%`} />
                     </div>
-                    <div style={{ height: 10, background: "var(--bg-3)", borderRadius: 6, overflow: "hidden" }}>
-                      <div style={{ width: `${bp}%`, height: "100%", background: bp >= 80 ? "var(--green)" : bp >= 40 ? "var(--accent)" : "var(--red)" }} />
-                    </div>
+                    <span style={{ width: 42, textAlign: "right", fontSize: 13, fontWeight: 700 }}>{bp}%</span>
                   </div>
                 );
               })}
