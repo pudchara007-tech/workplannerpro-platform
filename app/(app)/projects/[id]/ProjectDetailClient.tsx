@@ -1,6 +1,7 @@
 "use client";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import ReportPrint, { PrintOpts } from "./ReportPrint";
 
 type Task = {
   id: string; name: string; building: string | null; floor: string | null; team: string | null;
@@ -78,6 +79,7 @@ export default function ProjectDetailClient({ project }: { project: any }) {
   const [exportModal, setExportModal] = useState<null | "weekly" | "full">(null);
   const [exportPhotos, setExportPhotos] = useState(false);
   const [weekOffset, setWeekOffset] = useState(0);
+  const [printOpts, setPrintOpts] = useState<PrintOpts | null>(null);
 
   const buildings: string[] = project.buildings || [];
   const floors: string[] = project.floors || [];
@@ -228,11 +230,10 @@ export default function ProjectDetailClient({ project }: { project: any }) {
     return { from: ymd(mon), to: ymd(sun) };
   }
   function doExport() {
-    const p = new URLSearchParams({ print: "1" });
-    if (exportPhotos) p.set("photos", "1");
-    if (exportModal === "weekly") { p.set("type", "weekly"); const { from, to } = weekRange(weekOffset); p.set("from", from); p.set("to", to); }
+    const weekly = exportModal === "weekly";
+    const wr = weekly ? weekRange(weekOffset) : { from: undefined, to: undefined };
     setExportModal(null);
-    window.open(`/projects/${project.id}/report?${p.toString()}`, "_blank");
+    setPrintOpts({ weekly, withPhotos: exportPhotos, from: wr.from, to: wr.to });
   }
   async function pushDay(t: Task) {
     if (!t.end_date) return;
@@ -1047,6 +1048,8 @@ export default function ProjectDetailClient({ project }: { project: any }) {
           </div>
         </div>
       )}
+
+      {printOpts && <ReportPrint project={project} tasks={tasks} opts={printOpts} onDone={() => setPrintOpts(null)} />}
     </div>
   );
 }

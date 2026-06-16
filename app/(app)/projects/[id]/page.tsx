@@ -17,7 +17,6 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
           <h1 className="text-2xl font-semibold">{project.name}</h1>
           {project.description && <p className="text-gray-400 text-sm">{project.description}</p>}
         </div>
-        <Link href={`/projects/${params.id}/report`} className="header-btn primary">📄 Report</Link>
       </div>
       <ProjectDetailClient project={project} />
     </div>
