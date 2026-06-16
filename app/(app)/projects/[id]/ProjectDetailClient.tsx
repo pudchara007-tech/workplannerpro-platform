@@ -205,6 +205,13 @@ export default function ProjectDetailClient({ project }: { project: any }) {
     setTasks((p) => p.filter((x) => x.id !== id));
     await supabase.from("tasks").delete().eq("id", id);
   }
+  async function pushDay(t: Task) {
+    if (!t.end_date) return;
+    const nd = new Date(t.end_date); nd.setDate(nd.getDate() + 1);
+    const ns = ymd(nd);
+    setTasks((p) => p.map((x) => (x.id === t.id ? { ...x, end_date: ns } : x)));
+    await supabase.from("tasks").update({ end_date: ns }).eq("id", t.id);
+  }
   async function updateInsp(t: Task, status: string) {
     setTasks((p) => p.map((x) => (x.id === t.id ? { ...x, inspection_result: status } : x)));
     await supabase.from("tasks").update({ inspection_result: status }).eq("id", t.id);
@@ -231,21 +238,50 @@ export default function ProjectDetailClient({ project }: { project: any }) {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const floorLabel = (f: string | null) => (f === "Basement" ? "ชั้นใต้ดิน" : f ? "ชั้น " + f : "");
 
+  // นับวันถึง/เกินกำหนด
+  const daysRemaining = (t: Task): number | null => {
+    if (!t.end_date) return null;
+    return Math.round((new Date(t.end_date).getTime() - new Date(today).getTime()) / 86400000);
+  };
+  const photoCount = (t: Task) => (Array.isArray(t.photos) ? t.photos.length : 0);
+
   const TaskCard = (t: Task) => {
     const cls = [t.done ? "done" : "", !t.done && t.end_date && t.end_date < today ? "urgent" : "", t.blocked ? "blocked" : ""].filter(Boolean).join(" ");
+    const days = daysRemaining(t);
+    let daysHtml = "", daysCls = "";
+    if (t.done) { daysHtml = "✅ เสร็จ"; daysCls = "ok"; }
+    else if (days === null) { daysHtml = "— ยังไม่มีกำหนด"; }
+    else if (days < 0) { daysHtml = `เลย ${-days} วัน`; daysCls = "danger"; }
+    else if (days === 0) { daysHtml = t.is_inspection ? "วันนี้!" : "ครบวันนี้"; daysCls = "danger"; }
+    else { daysHtml = `อีก ${days} วัน`; daysCls = days <= 1 ? "danger" : (days <= 3 ? "warn" : ""); }
+    const pc = photoCount(t);
+    const period = !t.start_date || !t.end_date ? "ยังไม่ระบุวันที่"
+      : t.start_date === t.end_date ? fmtShort(t.start_date) : `${fmtShort(t.start_date)} - ${fmtShort(t.end_date)}`;
     return (
       <div key={t.id} className={`task ${cls}`}>
         <button className={`task-status ${t.done ? "done" : ""}`} onClick={() => toggle(t)} title="ติ๊กเสร็จ">{t.done ? "✓" : ""}</button>
         <div className="task-body" style={{ cursor: "pointer" }} onClick={() => openEdit(t)}>
-          <div className="task-title-row"><span className="task-title">{t.name}</span>{Array.isArray(t.photos) && t.photos.length > 0 && <span className="cal-tag" title={`แนบรูป ${t.photos.length} รูป`} style={{ background: "var(--accent)22", color: "var(--accent)" }}>📷 {t.photos.length}</span>}</div>
+          <div className="task-title-row">
+            <span className="task-title">{t.name}</span>
+            {!t.done && t.blocked && <span className="in-progress-tag" style={{ background: "var(--accent)22", color: "var(--accent)" }}>🚧 รอของ</span>}
+          </div>
           <div className="task-meta">
             <span className="task-loc">อาคาร {t.building} · {floorLabel(t.floor)}</span>
             {t.team && <span className="cal-tag">{t.team}</span>}
-            {t.end_date && <span className={!t.done && t.end_date < today ? "task-due overdue" : "task-due"}>{!t.done && t.end_date < today ? "⚠️ เกิน " : "ถึง "}{t.end_date}</span>}
+            <span>📅 {period}</span>
           </div>
-          {t.note && <div className="task-note">📝 {t.note}</div>}
+          {t.note && <div className="task-note">{t.blocked ? "🚧 " : "📝 "}{t.note}</div>}
         </div>
-        <button className="icon-btn" onClick={() => del(t.id)} title="ลบ">🗑</button>
+        <div className="task-right">
+          <div className={`task-days ${daysCls}`}>{daysHtml}</div>
+          <div className="task-actions-inline">
+            {!t.done && days !== null && days <= 0 && (
+              <button className="icon-btn push" onClick={() => pushDay(t)} title="เลื่อน +1 วัน">+1d</button>
+            )}
+            <button className={`icon-btn ${pc > 0 ? "has-photos" : ""}`} onClick={() => openEdit(t)} title={pc > 0 ? `ดูรูป ${pc} รูป` : "แนบรูป"}>{pc > 0 ? `📷 ${pc}` : "📷"}</button>
+            <button className="icon-btn" onClick={() => openEdit(t)} title="แก้ไขงาน">✏️</button>
+          </div>
+        </div>
       </div>
     );
   };
