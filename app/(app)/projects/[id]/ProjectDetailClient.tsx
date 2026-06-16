@@ -15,6 +15,17 @@ const INSP_STATUS: Record<string, { label: string; cls: string }> = {
   rework: { label: "แก้ไข", cls: "ins-rework" },
 };
 const inspMeta = (s: string | null) => INSP_STATUS[s || "pending"] || INSP_STATUS.pending;
+const INSP_ICON: Record<string, string> = { pending: "·", passed: "✓", failed: "✕", rework: "🔧" };
+const INSP_CYCLE = ["pending", "passed", "failed", "rework"];
+const SYSTEMS = [
+  { id: "lighting", label: "แสงสว่าง", icon: "💡" },
+  { id: "socket-comm", label: "เต้ารับ+สื่อสาร", icon: "🔌" },
+  { id: "emergency", label: "โหลดเซน+ป้ายหนีไฟ", icon: "🚨" },
+  { id: "fire-alarm", label: "แจ้งเหตุเพลิงไหม้", icon: "🔥" },
+  { id: "grounding", label: "สายดิน", icon: "🌐" },
+  { id: "other", label: "อื่นๆ", icon: "📋" },
+];
+const floorLabelShort = (f: string | null) => (f === "Basement" ? "B" : f || "");
 const TH_MONTHS = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
 const TH_DOW = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
 function ymd(d: Date) {
@@ -212,38 +223,75 @@ export default function ProjectDetailClient({ project }: { project: any }) {
         </div>
       )}
 
-      {/* INSPECTION */}
-      {view === "inspection" && (
-        <div style={{ marginTop: 16 }}>
-          <div className="kpi-row" style={{ padding: 0, marginBottom: 14 }}>
-            {(["pending", "passed", "failed", "rework"] as const).map((k) => (
-              <div key={k} className="kpi"><div className="kpi-label">{INSP_STATUS[k].label}</div><div className="kpi-value">{inspStat(k)}</div></div>
-            ))}
-          </div>
-          <select className="form-input" style={{ maxWidth: 180, marginBottom: 12 }} value={inspBuilding} onChange={(e) => setInspBuilding(e.target.value)}>
-            <option value="all">อาคาร: ทั้งหมด</option>{buildings.map((b) => <option key={b} value={b}>{b}</option>)}
-          </select>
-          <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>รวมส่งตรวจ {inspTasks.length} จุด</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {inspTasks.filter((t) => inspBuilding === "all" || t.building === inspBuilding).map((t) => {
-              const stKey = INSP_STATUS[t.inspection_result || "pending"] ? (t.inspection_result || "pending") : "pending";
-              const meta = inspMeta(t.inspection_result);
+      {/* INSPECTION matrix */}
+      {view === "inspection" && (() => {
+        const insp = inspTasks.filter((t: any) => t.zone_id); // ต้อง re-import เพื่อให้มี zone_id
+        const passed = inspTasks.filter((t) => (t.inspection_result || "pending") === "passed").length;
+        const total = inspTasks.length;
+        const pctPass = total ? Math.round((passed / total) * 100) : 0;
+        const bldgs = [...new Set(insp.map((t: any) => t.building).filter(Boolean))].sort();
+        // status ของ cell (zone×system)
+        const cycleCell = (t: any) => {
+          const cur = t.inspection_result || "pending";
+          updateInsp(t, INSP_CYCLE[(INSP_CYCLE.indexOf(cur) + 1) % INSP_CYCLE.length]);
+        };
+        return (
+          <div style={{ marginTop: 16 }}>
+            <div className="kpi-row" style={{ padding: 0, marginBottom: 14 }}>
+              {(["pending", "passed", "failed", "rework"] as const).map((k) => (
+                <div key={k} className="kpi"><div className="kpi-label">{INSP_STATUS[k].label}</div><div className="kpi-value">{inspStat(k)}</div></div>
+              ))}
+            </div>
+            <div className="muted" style={{ fontSize: 13, marginBottom: 10 }}>ผ่าน {passed}/{total} ({pctPass}%) · กดที่ช่องเพื่อหมุนสถานะ (รอ → ผ่าน → ไม่ผ่าน → แก้ไข)</div>
+            {insp.length === 0 ? (
+              <div className="day-detail muted">ยังไม่มีข้อมูล matrix — ต้อง <strong>re-import KARON</strong> หลังรัน migration 004 (งานส่งตรวจเดิมยังไม่มี zone/system)</div>
+            ) : bldgs.map((b) => {
+              const bTasks = insp.filter((t: any) => t.building === b);
+              // zones unique
+              const zoneMap: Record<string, any> = {};
+              bTasks.forEach((t: any) => { if (!zoneMap[t.zone_id]) zoneMap[t.zone_id] = { id: t.zone_id, name: t.zone_name, floor: t.floor, type: t.zone_type }; });
+              const zones = Object.values(zoneMap).sort((a: any, c: any) => String(a.floor).localeCompare(String(c.floor)) || String(a.name).localeCompare(String(c.name)));
               return (
-                <div key={t.id} className="task">
-                  <div className="task-status" style={{ opacity: 0.6 }}>🔍</div>
-                  <div className="task-body">
-                    <div className="task-title-row"><span className="task-title">{t.name}</span></div>
-                    <div className="task-meta"><span className="task-loc">อาคาร {t.building} · {floorLabel(t.floor)}</span>{t.team && <span className="cal-tag">{t.team}</span>}</div>
+                <div key={b} style={{ marginBottom: 20 }}>
+                  <div className="building-name" style={{ marginBottom: 8 }}>📋 อาคาร {b}</div>
+                  <div style={{ overflowX: "auto" }}>
+                    <table className="print-room-table" style={{ minWidth: 640 }}>
+                      <thead><tr>
+                        <th style={{ textAlign: "left", minWidth: 120 }}>พื้นที่</th>
+                        {SYSTEMS.map((s) => <th key={s.id} title={s.label}>{s.icon}</th>)}
+                      </tr></thead>
+                      <tbody>
+                        {zones.map((z: any) => (
+                          <tr key={z.id}>
+                            <td className="td-room">{floorLabelShort(z.floor)} · {z.name}</td>
+                            {SYSTEMS.map((s) => {
+                              const cells = bTasks.filter((t: any) => t.zone_id === z.id && t.system === s.id);
+                              if (cells.length === 0) return <td key={s.id} style={{ color: "var(--text-mute)" }}>—</td>;
+                              if (z.type === "room" && cells.length > 1) {
+                                const ps = cells.filter((c: any) => (c.inspection_result || "pending") === "passed").length;
+                                const allPass = ps === cells.length;
+                                return <td key={s.id} className={allPass ? "ps-passed-bg" : ""} style={{ fontSize: 11, fontWeight: 700 }}>{ps}/{cells.length}</td>;
+                              }
+                              const t = cells[0];
+                              const st = t.inspection_result || "pending";
+                              return (
+                                <td key={s.id} onClick={() => cycleCell(t)} title={INSP_STATUS[st]?.label} style={{ cursor: "pointer" }}
+                                  className={st === "passed" ? "ps-passed-bg" : st === "failed" ? "ps-failed-bg" : st === "rework" ? "ps-rework-bg" : ""}>
+                                  <span style={{ fontWeight: 700 }}>{INSP_ICON[st]}</span>
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
-                  <select className="form-input" style={{ maxWidth: 110, padding: "4px 8px" }} value={stKey} onChange={(e) => updateInsp(t, e.target.value)}>
-                    {Object.keys(INSP_STATUS).map((k) => <option key={k} value={k}>{INSP_STATUS[k].label}</option>)}
-                  </select>
                 </div>
               );
             })}
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* รายอาคาร (board) */}
       {view === "buildings" && (

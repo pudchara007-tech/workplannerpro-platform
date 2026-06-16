@@ -117,6 +117,15 @@ export default function ProjectsClient() {
           is_inspection: !!isInsp,
           inspection_result: ov.inspectionResult !== undefined ? ov.inspectionResult : (t.inspectionResult || null),
           note: ov.note !== undefined ? ov.note : (t.note || null),
+          materials: ov.materials !== undefined ? ov.materials : (t.materials || null),
+          person_count: ov.personCount !== undefined ? ov.personCount : null,
+          // โครงสร้างงานส่งตรวจ (สำหรับ matrix)
+          zone_id: t.zoneId || null,
+          zone_name: t.zoneName || null,
+          zone_type: t.zone || null,
+          room_number: t.roomNumber || null,
+          system: t.system || null,
+          system_name: t.systemName || null,
           created_by: user.id,
         };
       };
