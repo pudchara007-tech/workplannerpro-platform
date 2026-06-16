@@ -27,6 +27,7 @@ export default function ProjectsClient() {
   const [loaded, setLoaded] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
   const [importing, setImporting] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const [f, setF] = useState({ name: "", description: "", icon: "🏗️", color: "#3b82f6", buildings: "A, B", floors: "1, 2, 3", teams: "ทีม A" });
@@ -49,27 +50,40 @@ export default function ProjectsClient() {
     setProjects((p) => p.filter((x) => x.id !== id));
   }
 
+  function openEdit(p: Project) {
+    setF({
+      name: p.name, description: p.description || "", icon: p.icon || "🏗️", color: p.color || "#3b82f6",
+      buildings: (p.buildings || []).join(", "), floors: (p.floors || []).join(", "),
+      teams: (p.teams || []).map((t: any) => (typeof t === "string" ? t : t.name)).join(", "),
+    });
+    setEditId(p.id);
+    setShowForm(true);
+  }
+  function resetForm() {
+    setF({ name: "", description: "", icon: "🏗️", color: "#3b82f6", buildings: "A, B", floors: "1, 2, 3", teams: "ทีม A" });
+    setEditId(null); setShowForm(false);
+  }
   async function createProject() {
     if (!f.name.trim()) return;
     setSaving(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setSaving(false); return; }
     const teams = csvToArr(f.teams).map((n, i) => ({ name: n, color: COLORS[i % COLORS.length] }));
-    const { error } = await supabase.from("projects").insert({
-      owner_id: user.id,
-      name: f.name.trim(),
-      description: f.description.trim() || null,
-      icon: f.icon,
-      color: f.color,
-      type: "project",
-      buildings: csvToArr(f.buildings),
-      floors: csvToArr(f.floors),
-      teams,
-    });
+    const payload: any = {
+      name: f.name.trim(), description: f.description.trim() || null, icon: f.icon, color: f.color,
+      buildings: csvToArr(f.buildings), floors: csvToArr(f.floors), teams,
+    };
+    let error;
+    if (editId) {
+      payload.updated_at = new Date().toISOString();
+      ({ error } = await supabase.from("projects").update(payload).eq("id", editId));
+    } else {
+      payload.owner_id = user.id; payload.type = "project";
+      ({ error } = await supabase.from("projects").insert(payload));
+    }
     setSaving(false);
-    if (error) { alert("สร้างไม่สำเร็จ: " + error.message); return; }
-    setF({ name: "", description: "", icon: "🏗️", color: "#3b82f6", buildings: "A, B", floors: "1, 2, 3", teams: "ทีม A" });
-    setShowForm(false);
+    if (error) { alert("บันทึกไม่สำเร็จ: " + error.message); return; }
+    resetForm();
     load();
   }
 
@@ -98,6 +112,7 @@ export default function ProjectsClient() {
         floors: meta.floors || [],
         teams,
         categories: meta.categories || [],
+        logo: pdata.companyLogo || meta.companyLogo || null,
         settings: { inspectionPlan: meta.inspectionPlan || pdata.inspectionPlan || [], importedFrom: "legacy" },
       }).select("id").single();
       if (pErr) throw pErr;
@@ -126,6 +141,7 @@ export default function ProjectsClient() {
           note: ov.note !== undefined ? ov.note : (t.note || null),
           materials: ov.materials !== undefined ? ov.materials : (t.materials || null),
           person_count: ov.personCount !== undefined ? ov.personCount : null,
+          photos: (ov.photos || []).map((p: any) => (typeof p === "string" ? p : (p.url || p.thumb))).filter(Boolean),
           // โครงสร้างงานส่งตรวจ (สำหรับ matrix)
           zone_id: t.zoneId || null,
           zone_name: t.zoneName || null,
@@ -142,6 +158,18 @@ export default function ProjectsClient() {
         ...raw.filter((t: any) => !(overrides[t.id] && overrides[t.id].deleted)).map(toRow),
         ...userTasks.filter((t: any) => !(overrides[t.id] && overrides[t.id].deleted)).map(toRow),
       ];
+
+      // รูปห้อง/โซน (inspectionRoomPhotos: key = zoneId__room) → แนบกับงานส่งตรวจที่ตรง
+      const roomPhotos = pdata.inspectionRoomPhotos || {};
+      Object.entries(roomPhotos).forEach(([key, arr]: any) => {
+        if (!Array.isArray(arr) || !arr.length) return;
+        const idx = key.indexOf("__");
+        const zid = idx >= 0 ? key.slice(0, idx) : key;
+        const room = idx >= 0 ? key.slice(idx + 2) : "";
+        const urls = arr.map((p: any) => (typeof p === "string" ? p : (p.url || p.thumb))).filter(Boolean);
+        const row = rows.find((r: any) => r.zone_id === zid && (room ? r.room_number === room : true));
+        if (row) row.photos = [...(row.photos || []), ...urls];
+      });
 
       // insert เป็น batch ละ 200
       let done = 0;
@@ -171,7 +199,7 @@ export default function ProjectsClient() {
         <button className="btn" onClick={() => fileRef.current?.click()} disabled={!!importing}>
           <i className="ti ti-upload" /> {importing || "นำเข้าจากแอปเก่า"}
         </button>
-        <button className="btn btn-primary" onClick={() => setShowForm((s) => !s)}>
+        <button className="btn btn-primary" onClick={() => { if (showForm) { resetForm(); } else { setEditId(null); setF({ name: "", description: "", icon: "🏗️", color: "#3b82f6", buildings: "A, B", floors: "1, 2, 3", teams: "ทีม A" }); setShowForm(true); } }}>
           <i className="ti ti-plus" /> สร้างโครงการ
         </button>
       </div>
@@ -211,9 +239,12 @@ export default function ProjectsClient() {
               </div>
             </div>
           </div>
-          <button className="btn btn-primary" onClick={createProject} disabled={saving}>
-            {saving ? "กำลังสร้าง..." : "สร้างโครงการ"}
-          </button>
+          <div className="flex gap-2">
+            <button className="btn btn-primary" onClick={createProject} disabled={saving}>
+              {saving ? "กำลังบันทึก..." : editId ? "บันทึกการแก้ไข" : "สร้างโครงการ"}
+            </button>
+            <button className="btn" onClick={resetForm}>ยกเลิก</button>
+          </div>
         </div>
       )}
 
@@ -221,8 +252,10 @@ export default function ProjectsClient() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {projects.map((p) => (
             <div key={p.id} className="card p-5 relative" style={{ borderLeftColor: p.color || "#3b82f6", borderLeftWidth: 3 }}>
-              <button onClick={() => deleteProject(p.id, p.name)} title="ลบโครงการ"
-                className="absolute top-2 right-2 text-gray-600 hover:text-red-400 text-sm z-10">🗑</button>
+              <div className="absolute top-2 right-2 flex gap-2 z-10">
+                <button onClick={() => openEdit(p)} title="แก้ไขโครงการ" className="text-gray-600 hover:text-brand text-sm">✏️</button>
+                <button onClick={() => deleteProject(p.id, p.name)} title="ลบโครงการ" className="text-gray-600 hover:text-red-400 text-sm">🗑</button>
+              </div>
               <Link href={`/projects/${p.id}`} className="block hover:opacity-90 transition">
                 <div className="flex items-center gap-3 mb-2">
                   <span className="w-10 h-10 rounded-lg flex items-center justify-center text-xl" style={{ background: (p.color || "#3b82f6") + "22" }}>{p.icon || "🏗️"}</span>
