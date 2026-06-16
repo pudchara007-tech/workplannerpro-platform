@@ -13,10 +13,11 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
       <Link href="/projects" className="text-sm text-gray-400 hover:text-brand">← โครงการทั้งหมด</Link>
       <div className="flex items-center gap-3 mt-2 mb-6">
         <span className="w-11 h-11 rounded-lg flex items-center justify-center text-2xl" style={{ background: (project.color || "#3b82f6") + "22" }}>{project.icon || "🏗️"}</span>
-        <div>
+        <div className="flex-1">
           <h1 className="text-2xl font-semibold">{project.name}</h1>
           {project.description && <p className="text-gray-400 text-sm">{project.description}</p>}
         </div>
+        <Link href={`/projects/${params.id}/report`} className="header-btn primary">📄 Report</Link>
       </div>
       <ProjectDetailClient project={project} />
     </div>

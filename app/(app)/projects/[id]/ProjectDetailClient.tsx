@@ -326,7 +326,7 @@ export default function ProjectDetailClient({ project }: { project: any }) {
 
       {/* TABS */}
       <div className="tabs">
-        {([["daily","📅 รายวัน"],["progress","📊 Progress"],["inspection","🔍 ส่งตรวจ"],["buildings","🏢 รายอาคาร"],["issues","📦 รายการของ"],["all","📋 งานทั้งหมด"],["activity","📜 ประวัติ"]] as const).map(([v,label]) => (
+        {([["daily","📅 รายวัน"],["progress","📊 Progress / S-Curve"],["inspection","🔍 ส่งตรวจ"],["buildings","🏢 รายอาคาร"],["issues","📦 รายการของ"],["all","📋 งานทั้งหมด"],["activity","📜 ประวัติ"]] as const).map(([v,label]) => (
           <button key={v} className={`tab ${view === v ? "active" : ""}`} onClick={() => setView(v)}>{label}</button>
         ))}
       </div>
@@ -655,14 +655,86 @@ export default function ProjectDetailClient({ project }: { project: any }) {
         </div>
       )}
 
-      {/* Progress / S-Curve (placeholder) */}
-      {view === "progress" && (
-        <div className="day-detail" style={{ marginTop: 16 }}>
-          <h3 style={{ margin: "0 0 8px" }}>📊 Progress / S-Curve</h3>
-          <div className="muted">กำลังพัฒนา — กราฟ S-Curve / Burndown / Progress รายอาคาร (เฟสถัดไป)</div>
-          <div style={{ marginTop: 12 }}>ความคืบหน้ารวม: <strong>{pct}%</strong> ({done}/{total} งาน)</div>
-        </div>
-      )}
+      {/* Progress / S-Curve */}
+      {view === "progress" && (() => {
+        const items = regular.filter((t) => t.start_date && t.end_date);
+        if (items.length === 0) return (
+          <div className="day-detail muted" style={{ marginTop: 16 }}>ยังไม่มีงานที่มีกำหนดวันที่ — เพิ่มวันเริ่ม/เสร็จเพื่อดูกราฟ S-Curve</div>
+        );
+        const compDate = (t: Task) => (t as any).done_at ? ymd(new Date((t as any).done_at)) : (t.done ? today : null);
+        const tot = items.length;
+        let minS = items[0].start_date!, maxE = items[0].end_date!;
+        items.forEach((t) => { if (t.start_date! < minS) minS = t.start_date!; if (t.end_date! > maxE) maxE = t.end_date!; });
+        const dates: string[] = [];
+        const cur = new Date(minS), end = new Date(maxE);
+        while (cur <= end) { dates.push(ymd(cur)); cur.setDate(cur.getDate() + 1); }
+        const planned = dates.map((d) => items.filter((t) => t.end_date! <= d).length / tot * 100);
+        const actual = dates.map((d) => d > today ? null : items.filter((t) => { const c = compDate(t); return c && c <= d; }).length / tot * 100);
+        const W = 820, H = 340, M = { t: 24, r: 24, b: 44, l: 44 };
+        const iw = W - M.l - M.r, ih = H - M.t - M.b;
+        const xS = (i: number) => M.l + (dates.length <= 1 ? 0 : (i / (dates.length - 1)) * iw);
+        const yS = (v: number) => M.t + ih - (v / 100) * ih;
+        const plannedPath = dates.map((d, i) => `${i === 0 ? "M" : "L"}${xS(i).toFixed(1)} ${yS(planned[i]).toFixed(1)}`).join(" ");
+        const aPts = actual.map((v, i) => v !== null ? [xS(i), yS(v)] : null).filter(Boolean) as number[][];
+        const actualPath = aPts.map((p, i) => `${i === 0 ? "M" : "L"}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(" ");
+        const tIdx = dates.indexOf(today);
+        const tPlanned = tIdx >= 0 ? planned[tIdx] : (today > maxE ? 100 : 0);
+        const tActual = tIdx >= 0 && actual[tIdx] !== null ? actual[tIdx]! : (pct);
+        const gap = tActual - tPlanned;
+        return (
+          <div style={{ marginTop: 16 }}>
+            <div className="kpi-row" style={{ padding: 0, marginBottom: 14 }}>
+              <div className="kpi"><div className="kpi-label">ตามแผนวันนี้</div><div className="kpi-value" style={{ color: "var(--accent)" }}>{tPlanned.toFixed(1)}%</div></div>
+              <div className="kpi"><div className="kpi-label">ทำได้จริง</div><div className="kpi-value" style={{ color: "var(--green)" }}>{tActual.toFixed(1)}%</div></div>
+              <div className="kpi"><div className="kpi-label">{gap >= 0 ? "ล่วงหน้าแผน" : "ช้ากว่าแผน"}</div><div className="kpi-value" style={{ color: gap >= 0 ? "var(--green)" : "var(--red)" }}>{gap >= 0 ? "+" : ""}{gap.toFixed(1)}%</div></div>
+              <div className="kpi"><div className="kpi-label">เสร็จ / ทั้งหมด</div><div className="kpi-value">{done}<span style={{ fontSize: 13, color: "var(--text-3)" }}> / {tot}</span></div></div>
+            </div>
+            <div className="day-detail">
+              <h3 style={{ margin: "0 0 10px" }}>📈 S-Curve (แผน vs จริง)</h3>
+              <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto" }} preserveAspectRatio="xMidYMid meet">
+                {[0, 25, 50, 75, 100].map((p) => (
+                  <g key={p}>
+                    <line x1={M.l} y1={yS(p)} x2={M.l + iw} y2={yS(p)} stroke="var(--border)" strokeOpacity="0.5" />
+                    <text x={M.l - 8} y={yS(p) + 3} textAnchor="end" fontSize="11" fill="var(--text-3)">{p}%</text>
+                  </g>
+                ))}
+                {dates.map((d, i) => (i % Math.ceil(dates.length / 8) === 0 || i === dates.length - 1) ? (
+                  <text key={i} x={xS(i)} y={M.t + ih + 18} textAnchor="middle" fontSize="10" fill="var(--text-3)">{new Date(d).getDate()}/{new Date(d).getMonth() + 1}</text>
+                ) : null)}
+                <path d={`${plannedPath} L${xS(dates.length - 1)} ${yS(0)} L${xS(0)} ${yS(0)} Z`} fill="var(--accent)" fillOpacity="0.08" />
+                <path d={plannedPath} fill="none" stroke="var(--accent)" strokeWidth="2.5" />
+                {actualPath && <path d={actualPath} fill="none" stroke="var(--green)" strokeWidth="2.5" />}
+                {tIdx >= 0 && <line x1={xS(tIdx)} y1={M.t} x2={xS(tIdx)} y2={M.t + ih} stroke="var(--red)" strokeDasharray="4 3" strokeOpacity="0.7" />}
+                {tIdx >= 0 && <text x={xS(tIdx)} y={M.t - 6} textAnchor="middle" fontSize="10" fill="var(--red)">วันนี้</text>}
+              </svg>
+              <div style={{ display: "flex", gap: 16, fontSize: 12, marginTop: 6 }}>
+                <span style={{ color: "var(--accent)" }}>▬ แผน</span>
+                <span style={{ color: "var(--green)" }}>▬ ทำได้จริง</span>
+              </div>
+            </div>
+            {/* ความคืบหน้ารายอาคาร */}
+            <div className="day-detail" style={{ marginTop: 14 }}>
+              <h3 style={{ margin: "0 0 10px" }}>🏢 ความคืบหน้ารายอาคาร</h3>
+              {buildings.map((b) => {
+                const bt = regular.filter((t) => t.building === b);
+                if (!bt.length) return null;
+                const bd = bt.filter((t) => t.done).length;
+                const bp = Math.round(bd / bt.length * 100);
+                return (
+                  <div key={b} style={{ marginBottom: 10 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
+                      <strong>อาคาร {b}</strong><span className="muted">{bd}/{bt.length} ({bp}%)</span>
+                    </div>
+                    <div style={{ height: 10, background: "var(--bg-3)", borderRadius: 6, overflow: "hidden" }}>
+                      <div style={{ width: `${bp}%`, height: "100%", background: bp >= 80 ? "var(--green)" : bp >= 40 ? "var(--accent)" : "var(--red)" }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ประวัติ (placeholder) */}
       {view === "activity" && (
