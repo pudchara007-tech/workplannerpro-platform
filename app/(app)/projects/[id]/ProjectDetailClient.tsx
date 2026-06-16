@@ -266,21 +266,47 @@ export default function ProjectDetailClient({ project }: { project: any }) {
         {([["daily","📅 รายวัน"],["progress","📊 Progress"],["inspection","🔍 ส่งตรวจ"],["buildings","🏢 รายอาคาร"],["issues","📦 รายการของ"],["all","📋 งานทั้งหมด"],["activity","📜 ประวัติ"]] as const).map(([v,label]) => (
           <button key={v} className={`tab ${view === v ? "active" : ""}`} onClick={() => setView(v)}>{label}</button>
         ))}
-        <button className="header-btn primary" style={{ marginLeft: "auto" }} onClick={() => setShowForm((s) => !s)}>+ เพิ่มงาน</button>
       </div>
 
+      {/* FAB เพิ่มงาน (มุมขวาล่าง) */}
+      <button onClick={() => setShowForm(true)} title="เพิ่มงาน" aria-label="เพิ่มงาน"
+        style={{ position: "fixed", right: 24, bottom: 24, zIndex: 60, width: 56, height: 56, borderRadius: "50%",
+          background: "var(--accent)", color: "#1a1a1a", border: "none", fontSize: 28, fontWeight: 700, lineHeight: 1,
+          cursor: "pointer", boxShadow: "0 4px 16px rgba(0,0,0,.4)", display: "flex", alignItems: "center", justifyContent: "center" }}>+</button>
+
+      {/* เพิ่มงาน modal */}
       {showForm && (
-        <div className="day-detail" style={{ margin: "14px 0", display: "flex", flexDirection: "column", gap: 10 }}>
-          <input className="form-input" placeholder="ชื่องาน *" value={nf.name} onChange={(e) => setNf({ ...nf, name: e.target.value })} />
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(120px,1fr))", gap: 8 }}>
-            <select className="form-input" value={nf.building} onChange={(e) => setNf({ ...nf, building: e.target.value })}>{buildings.map((b) => <option key={b} value={b}>{b}</option>)}</select>
-            <select className="form-input" value={nf.floor} onChange={(e) => setNf({ ...nf, floor: e.target.value })}>{floors.map((fl) => <option key={fl} value={fl}>{fl}</option>)}</select>
-            <select className="form-input" value={nf.team} onChange={(e) => setNf({ ...nf, team: e.target.value })}>{teams.map((t) => <option key={t} value={t}>{t}</option>)}</select>
-            <input type="date" className="form-input" value={nf.start_date} onChange={(e) => setNf({ ...nf, start_date: e.target.value })} />
-            <input type="date" className="form-input" value={nf.end_date} onChange={(e) => setNf({ ...nf, end_date: e.target.value })} />
+        <div className="modal-overlay active" onClick={(e) => { if (e.target === e.currentTarget) setShowForm(false); }}>
+          <div className="modal">
+            <div className="modal-header">
+              <div className="modal-title">➕ เพิ่มงาน</div>
+              <button className="modal-close" onClick={() => setShowForm(false)}>×</button>
+            </div>
+            <div className="modal-body" style={{ display: "flex", flexDirection: "column", gap: 12, maxHeight: "70vh", overflowY: "auto" }}>
+              <div className="form-group"><label className="form-label">ชื่องาน *</label>
+                <input className="form-input" placeholder="ชื่องาน" value={nf.name} onChange={(e) => setNf({ ...nf, name: e.target.value })} autoFocus /></div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                <div className="form-group"><label className="form-label">อาคาร</label>
+                  <select className="form-input" value={nf.building} onChange={(e) => setNf({ ...nf, building: e.target.value })}>{buildings.map((b) => <option key={b} value={b}>{b}</option>)}</select></div>
+                <div className="form-group"><label className="form-label">ชั้น</label>
+                  <select className="form-input" value={nf.floor} onChange={(e) => setNf({ ...nf, floor: e.target.value })}>{floors.map((fl) => <option key={fl} value={fl}>{fl}</option>)}</select></div>
+                <div className="form-group"><label className="form-label">ทีม</label>
+                  <select className="form-input" value={nf.team} onChange={(e) => setNf({ ...nf, team: e.target.value })}>{teams.map((t) => <option key={t} value={t}>{t}</option>)}</select></div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <div className="form-group"><label className="form-label">เริ่ม</label>
+                  <input type="date" className="form-input" value={nf.start_date} onChange={(e) => setNf({ ...nf, start_date: e.target.value })} /></div>
+                <div className="form-group"><label className="form-label">เสร็จ</label>
+                  <input type="date" className="form-input" value={nf.end_date} onChange={(e) => setNf({ ...nf, end_date: e.target.value })} /></div>
+              </div>
+              <div className="form-group"><label className="form-label">หมายเหตุ</label>
+                <input className="form-input" placeholder="หมายเหตุ" value={nf.note} onChange={(e) => setNf({ ...nf, note: e.target.value })} /></div>
+            </div>
+            <div className="modal-footer" style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button className="header-btn" onClick={() => setShowForm(false)}>ยกเลิก</button>
+              <button className="header-btn primary" onClick={addTask} disabled={saving}>{saving ? "กำลังเพิ่ม..." : "เพิ่มงาน"}</button>
+            </div>
           </div>
-          <input className="form-input" placeholder="หมายเหตุ" value={nf.note} onChange={(e) => setNf({ ...nf, note: e.target.value })} />
-          <button className="header-btn primary" onClick={addTask} disabled={saving}>{saving ? "กำลังเพิ่ม..." : "เพิ่มงาน"}</button>
         </div>
       )}
 
