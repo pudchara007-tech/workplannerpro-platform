@@ -12,9 +12,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const displayName = profile?.display_name || user.email?.split("@")[0] || "ผู้ใช้";
 
   return (
-    <div className="flex min-h-screen">
+    <div className="md:flex min-h-screen">
       <Sidebar displayName={displayName} />
-      <main className="flex-1 min-w-0 p-6 md:p-8">{children}</main>
+      <main className="flex-1 min-w-0 p-4 md:p-8">{children}</main>
     </div>
   );
 }
