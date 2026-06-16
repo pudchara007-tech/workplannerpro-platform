@@ -77,6 +77,40 @@ export default function ProjectDetailClient({ project }: { project: any }) {
     await supabase.from("tasks").update(patch).eq("id", id);
   }
 
+  // ── inspection builder: เพิ่ม/ลบ พื้นที่ ──
+  const [zoneForm, setZoneForm] = useState<any>(null);
+  function openZoneForm() {
+    setZoneForm({ building: buildings[0] || "", floor: floors[0] || "", zoneType: "common", zoneName: "", systems: SYSTEMS.map((s) => s.id), rooms: "" });
+  }
+  async function saveZone() {
+    const zf = zoneForm;
+    if (!zf || !zf.zoneName.trim()) { alert("กรุณาใส่ชื่อพื้นที่"); return; }
+    if (zf.systems.length === 0) { alert("เลือกระบบอย่างน้อย 1"); return; }
+    const { data: { user } } = await supabase.auth.getUser();
+    const zid = "zone-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 6);
+    const sysList = SYSTEMS.filter((s) => zf.systems.includes(s.id));
+    const rooms = zf.zoneType === "room"
+      ? (zf.rooms.split(",").map((r: string) => r.trim()).filter(Boolean))
+      : [null];
+    if (zf.zoneType === "room" && rooms.length === 0) { alert("ใส่เลขห้อง เช่น 201,202,203"); return; }
+    const rows: any[] = [];
+    sysList.forEach((s) => rooms.forEach((rm: any) => rows.push({
+      project_id: project.id, is_inspection: true, inspection_result: "pending",
+      name: `ส่งตรวจ${s.label}${rm ? " ห้อง " + rm : ""} · ${zf.zoneName}`,
+      building: zf.building, floor: zf.floor, zone_id: zid, zone_name: zf.zoneName.trim(),
+      zone_type: zf.zoneType, room_number: rm, system: s.id, system_name: s.label, created_by: user?.id || null,
+    })));
+    const { data, error } = await supabase.from("tasks").insert(rows).select("*");
+    if (error) { alert("เพิ่มไม่สำเร็จ: " + error.message); return; }
+    if (data) setTasks((p) => [...p, ...(data as Task[])]);
+    setZoneForm(null);
+  }
+  async function deleteZone(zoneId: string, label: string) {
+    if (!confirm(`ลบพื้นที่ "${label}" + งานส่งตรวจทั้งหมดในนั้น?`)) return;
+    setTasks((p) => p.filter((t: any) => t.zone_id !== zoneId));
+    await supabase.from("tasks").delete().eq("project_id", project.id).eq("zone_id", zoneId);
+  }
+
   const load = useCallback(async () => {
     const { data } = await supabase.from("tasks").select("*").eq("project_id", project.id).order("start_date");
     setTasks((data as Task[]) || []);
@@ -242,7 +276,10 @@ export default function ProjectDetailClient({ project }: { project: any }) {
                 <div key={k} className="kpi"><div className="kpi-label">{INSP_STATUS[k].label}</div><div className="kpi-value">{inspStat(k)}</div></div>
               ))}
             </div>
-            <div className="muted" style={{ fontSize: 13, marginBottom: 10 }}>ผ่าน {passed}/{total} ({pctPass}%) · กดที่ช่องเพื่อหมุนสถานะ (รอ → ผ่าน → ไม่ผ่าน → แก้ไข)</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
+              <span className="muted" style={{ fontSize: 13 }}>ผ่าน {passed}/{total} ({pctPass}%) · กดช่องเพื่อหมุนสถานะ</span>
+              <button className="header-btn primary" style={{ marginLeft: "auto" }} onClick={openZoneForm}>+ เพิ่มพื้นที่</button>
+            </div>
             {insp.length === 0 ? (
               <div className="day-detail muted">ยังไม่มีข้อมูล matrix — ต้อง <strong>re-import KARON</strong> หลังรัน migration 004 (งานส่งตรวจเดิมยังไม่มี zone/system)</div>
             ) : bldgs.map((b) => {
@@ -257,13 +294,15 @@ export default function ProjectDetailClient({ project }: { project: any }) {
                   <div style={{ overflowX: "auto" }}>
                     <table className="print-room-table" style={{ minWidth: 640 }}>
                       <thead><tr>
-                        <th style={{ textAlign: "left", minWidth: 120 }}>พื้นที่</th>
-                        {SYSTEMS.map((s) => <th key={s.id} title={s.label}>{s.icon}</th>)}
+                        <th style={{ textAlign: "left", minWidth: 130 }}>พื้นที่</th>
+                        {SYSTEMS.map((s) => <th key={s.id} title={s.label}><div style={{ fontSize: 14 }}>{s.icon}</div><div style={{ fontSize: 8, fontWeight: 400 }}>{s.label}</div></th>)}
                       </tr></thead>
                       <tbody>
                         {zones.map((z: any) => (
                           <tr key={z.id}>
-                            <td className="td-room">{floorLabelShort(z.floor)} · {z.name}</td>
+                            <td className="td-room">{floorLabelShort(z.floor)} · {z.name}
+                              <button onClick={() => deleteZone(z.id, z.name)} title="ลบพื้นที่" style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-mute)", marginLeft: 4 }}>🗑</button>
+                            </td>
                             {SYSTEMS.map((s) => {
                               const cells = bTasks.filter((t: any) => t.zone_id === z.id && t.system === s.id);
                               if (cells.length === 0) return <td key={s.id} style={{ color: "var(--text-mute)" }}>—</td>;
@@ -382,6 +421,47 @@ export default function ProjectDetailClient({ project }: { project: any }) {
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {regular.filter((t) => (fBuilding === "all" || t.building === fBuilding) && (fTeam === "all" || t.team === fTeam) && (fStatus === "all" || (fStatus === "done" ? t.done : !t.done))).map(TaskCard)}
+          </div>
+        </div>
+      )}
+
+      {/* เพิ่มพื้นที่ (inspection builder) modal */}
+      {zoneForm && (
+        <div className="modal-overlay active" onClick={(e) => { if (e.target === e.currentTarget) setZoneForm(null); }}>
+          <div className="modal">
+            <div className="modal-header">
+              <div className="modal-title">+ เพิ่มพื้นที่ส่งตรวจ</div>
+              <button className="modal-close" onClick={() => setZoneForm(null)}>×</button>
+            </div>
+            <div className="modal-body" style={{ display: "flex", flexDirection: "column", gap: 12, maxHeight: "70vh", overflowY: "auto" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <div className="form-group"><label className="form-label">อาคาร</label>
+                  <select className="form-input" value={zoneForm.building} onChange={(e) => setZoneForm({ ...zoneForm, building: e.target.value })}>{buildings.map((b) => <option key={b} value={b}>{b}</option>)}</select></div>
+                <div className="form-group"><label className="form-label">ชั้น</label>
+                  <select className="form-input" value={zoneForm.floor} onChange={(e) => setZoneForm({ ...zoneForm, floor: e.target.value })}>{floors.map((fl) => <option key={fl} value={fl}>{fl}</option>)}</select></div>
+              </div>
+              <div className="form-group"><label className="form-label">ชื่อพื้นที่ (เช่น ส่วนทางเดิน, ห้องพัก)</label>
+                <input className="form-input" value={zoneForm.zoneName} onChange={(e) => setZoneForm({ ...zoneForm, zoneName: e.target.value })} /></div>
+              <div className="form-group"><label className="form-label">ประเภท</label>
+                <select className="form-input" value={zoneForm.zoneType} onChange={(e) => setZoneForm({ ...zoneForm, zoneType: e.target.value })}>
+                  <option value="common">ส่วนกลาง (1 จุดต่อระบบ)</option>
+                  <option value="room">ห้องพัก (หลายห้อง)</option>
+                </select></div>
+              {zoneForm.zoneType === "room" && (
+                <div className="form-group"><label className="form-label">เลขห้อง (คั่นด้วย , เช่น 201,202,203)</label>
+                  <input className="form-input" value={zoneForm.rooms} onChange={(e) => setZoneForm({ ...zoneForm, rooms: e.target.value })} placeholder="201,202,203" /></div>
+              )}
+              <div className="form-group"><label className="form-label">ระบบที่ส่งตรวจ</label>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {SYSTEMS.map((s) => {
+                    const on = zoneForm.systems.includes(s.id);
+                    return <button key={s.id} type="button" onClick={() => setZoneForm({ ...zoneForm, systems: on ? zoneForm.systems.filter((x: string) => x !== s.id) : [...zoneForm.systems, s.id] })}
+                      className="header-btn" style={{ borderColor: on ? "var(--accent)" : "var(--border)", color: on ? "var(--accent)" : "var(--text-2)" }}>{on ? "✓ " : ""}{s.icon} {s.label}</button>;
+                  })}
+                </div>
+              </div>
+              <button className="header-btn primary" onClick={saveZone}>เพิ่มพื้นที่</button>
+            </div>
           </div>
         </div>
       )}
