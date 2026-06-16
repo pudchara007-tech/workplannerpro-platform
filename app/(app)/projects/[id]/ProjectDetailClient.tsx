@@ -6,6 +6,7 @@ type Task = {
   id: string; name: string; building: string | null; floor: string | null; team: string | null;
   start_date: string | null; end_date: string | null; done: boolean; blocked: boolean;
   is_inspection: boolean; inspection_result: string | null; note: string | null;
+  photos?: string[];
 };
 
 const INSP_STATUS: Record<string, { label: string; cls: string }> = {
@@ -235,7 +236,7 @@ export default function ProjectDetailClient({ project }: { project: any }) {
       <div key={t.id} className={`task ${cls}`}>
         <button className={`task-status ${t.done ? "done" : ""}`} onClick={() => toggle(t)} title="ติ๊กเสร็จ">{t.done ? "✓" : ""}</button>
         <div className="task-body" style={{ cursor: "pointer" }} onClick={() => openEdit(t)}>
-          <div className="task-title-row"><span className="task-title">{t.name}</span></div>
+          <div className="task-title-row"><span className="task-title">{t.name}</span>{Array.isArray(t.photos) && t.photos.length > 0 && <span className="cal-tag" title={`แนบรูป ${t.photos.length} รูป`} style={{ background: "var(--accent)22", color: "var(--accent)" }}>📷 {t.photos.length}</span>}</div>
           <div className="task-meta">
             <span className="task-loc">อาคาร {t.building} · {floorLabel(t.floor)}</span>
             {t.team && <span className="cal-tag">{t.team}</span>}
