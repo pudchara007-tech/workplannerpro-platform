@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 type Task = {
@@ -86,6 +86,9 @@ export default function ProjectDetailClient({ project }: { project: any }) {
     await supabase.from("tasks").update(patch).eq("id", id);
   }
 
+  // ── inspection: หมวด + ขยายห้อง ──
+  const [inspCat, setInspCat] = useState<"all" | "common" | "room">("all");
+  const [expZones, setExpZones] = useState<Record<string, boolean>>({});
   // ── inspection builder: เพิ่ม/ลบ พื้นที่ ──
   const [zoneForm, setZoneForm] = useState<any>(null);
   function openZoneForm() {
@@ -285,9 +288,14 @@ export default function ProjectDetailClient({ project }: { project: any }) {
                 <div key={k} className="kpi"><div className="kpi-label">{INSP_STATUS[k].label}</div><div className="kpi-value">{inspStat(k)}</div></div>
               ))}
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
               <span className="muted" style={{ fontSize: 13 }}>ผ่าน {passed}/{total} ({pctPass}%) · กดช่องเพื่อหมุนสถานะ</span>
               <button className="header-btn primary" style={{ marginLeft: "auto" }} onClick={openZoneForm}>+ เพิ่มพื้นที่</button>
+            </div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+              {([["all", "📋 รวม"], ["common", "🏢 ส่วนกลาง"], ["room", "🚪 ห้องพัก"]] as const).map(([k, l]) => (
+                <button key={k} className={`chip ${inspCat === k ? "active" : ""}`} onClick={() => setInspCat(k)}>{l}</button>
+              ))}
             </div>
             {insp.length === 0 ? (
               <div className="day-detail muted">ยังไม่มีข้อมูล matrix — ต้อง <strong>re-import KARON</strong> หลังรัน migration 004 (งานส่งตรวจเดิมยังไม่มี zone/system)</div>
@@ -307,30 +315,46 @@ export default function ProjectDetailClient({ project }: { project: any }) {
                         {SYSTEMS.map((s) => <th key={s.id} title={s.label} style={HEAD_TD}><div style={{ fontSize: 15 }}>{s.icon}</div><div style={{ fontSize: 9, fontWeight: 400 }}>{s.label}</div></th>)}
                       </tr></thead>
                       <tbody>
-                        {zones.map((z: any) => (
-                          <tr key={z.id}>
-                            <td style={ROW_TD}>{floorLabelShort(z.floor)} · {z.name}
-                              <button onClick={() => deleteZone(z.id, z.name)} title="ลบพื้นที่" style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-mute)", marginLeft: 6 }}>🗑</button>
-                            </td>
-                            {SYSTEMS.map((s) => {
-                              const cells = bTasks.filter((t: any) => t.zone_id === z.id && t.system === s.id);
-                              if (cells.length === 0) return <td key={s.id} style={{ ...CELL_TD, cursor: "default", color: "var(--text-mute)", background: "rgba(255,255,255,0.02)" }}>—</td>;
-                              if (z.type === "room" && cells.length > 1) {
-                                const ps = cells.filter((c: any) => (c.inspection_result || "pending") === "passed").length;
-                                const hasFail = cells.some((c: any) => c.inspection_result === "failed");
-                                const key = ps === cells.length ? "passed" : hasFail ? "failed" : ps > 0 ? "rework" : "pending";
-                                const col = INSP_BG[key];
-                                return <td key={s.id} style={{ ...CELL_TD, cursor: "default", background: col.bg, color: col.fg, fontSize: 12 }}>{ps}/{cells.length}</td>;
-                              }
-                              const t = cells[0];
-                              const st = t.inspection_result || "pending";
-                              const col = INSP_BG[st] || INSP_BG.pending;
-                              return (
-                                <td key={s.id} onClick={() => cycleCell(t)} title={INSP_STATUS[st]?.label} style={{ ...CELL_TD, background: col.bg, color: col.fg, fontSize: 16 }}>{INSP_ICON[st]}</td>
-                              );
-                            })}
-                          </tr>
-                        ))}
+                        {zones.filter((z: any) => inspCat === "all" || (inspCat === "common" ? z.type !== "room" : z.type === "room")).map((z: any) => {
+                          const isRoom = z.type === "room";
+                          const rooms = isRoom ? [...new Set(bTasks.filter((t: any) => t.zone_id === z.id).map((t: any) => t.room_number).filter(Boolean))].sort() : [];
+                          const expanded = !!expZones[z.id];
+                          return (
+                            <Fragment key={z.id}>
+                              <tr>
+                                <td style={ROW_TD}>
+                                  {isRoom && <button onClick={() => setExpZones((p) => ({ ...p, [z.id]: !p[z.id] }))} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-2)", marginRight: 4 }}>{expanded ? "▼" : "▶"}</button>}
+                                  {floorLabelShort(z.floor)} · {z.name}{isRoom ? ` (${rooms.length} ห้อง)` : ""}
+                                  <button onClick={() => deleteZone(z.id, z.name)} title="ลบพื้นที่" style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-mute)", marginLeft: 6 }}>🗑</button>
+                                </td>
+                                {SYSTEMS.map((s) => {
+                                  const cells = bTasks.filter((t: any) => t.zone_id === z.id && t.system === s.id);
+                                  if (cells.length === 0) return <td key={s.id} style={{ ...CELL_TD, cursor: "default", color: "var(--text-mute)", background: "rgba(255,255,255,0.02)" }}>—</td>;
+                                  if (isRoom && cells.length > 1) {
+                                    const ps = cells.filter((c: any) => (c.inspection_result || "pending") === "passed").length;
+                                    const hasFail = cells.some((c: any) => c.inspection_result === "failed");
+                                    const key = ps === cells.length ? "passed" : hasFail ? "failed" : ps > 0 ? "rework" : "pending";
+                                    const col = INSP_BG[key];
+                                    return <td key={s.id} style={{ ...CELL_TD, cursor: "default", background: col.bg, color: col.fg, fontSize: 12 }}>{ps}/{cells.length}</td>;
+                                  }
+                                  const t = cells[0]; const st = t.inspection_result || "pending"; const col = INSP_BG[st] || INSP_BG.pending;
+                                  return <td key={s.id} onClick={() => cycleCell(t)} title={INSP_STATUS[st]?.label} style={{ ...CELL_TD, background: col.bg, color: col.fg, fontSize: 16 }}>{INSP_ICON[st]}</td>;
+                                })}
+                              </tr>
+                              {isRoom && expanded && rooms.map((rm: any) => (
+                                <tr key={z.id + "-" + rm}>
+                                  <td style={{ ...ROW_TD, paddingLeft: 30, color: "var(--text-2)", fontSize: 11 }}>ห้อง {rm}</td>
+                                  {SYSTEMS.map((s) => {
+                                    const t = bTasks.find((x: any) => x.zone_id === z.id && x.system === s.id && x.room_number === rm);
+                                    if (!t) return <td key={s.id} style={{ ...CELL_TD, cursor: "default", color: "var(--text-mute)", background: "rgba(255,255,255,0.02)" }}>—</td>;
+                                    const st = t.inspection_result || "pending"; const col = INSP_BG[st] || INSP_BG.pending;
+                                    return <td key={s.id} onClick={() => cycleCell(t)} title={INSP_STATUS[st]?.label} style={{ ...CELL_TD, background: col.bg, color: col.fg, fontSize: 15 }}>{INSP_ICON[st]}</td>;
+                                  })}
+                                </tr>
+                              ))}
+                            </Fragment>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
