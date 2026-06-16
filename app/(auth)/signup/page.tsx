@@ -31,8 +31,8 @@ export default function SignupPage() {
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="card w-full max-w-sm p-7">
         <div className="text-center mb-6">
-          <div className="text-3xl mb-2">⚡</div>
-          <h1 className="text-lg font-semibold">สมัครสมาชิก</h1>
+          <img src="/logo.svg" alt="Mysthron" className="w-14 h-14 mx-auto mb-3" />
+          <h1 className="text-lg font-semibold">สมัครสมาชิก Mysthron</h1>
         </div>
         <form onSubmit={handleSignup} className="space-y-4">
           <div>

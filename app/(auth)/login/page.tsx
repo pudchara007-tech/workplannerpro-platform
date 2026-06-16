@@ -27,8 +27,8 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="card w-full max-w-sm p-7">
         <div className="text-center mb-6">
-          <div className="text-3xl mb-2">⚡</div>
-          <h1 className="text-lg font-semibold">เข้าสู่ระบบ WorkPlannerPro</h1>
+          <img src="/logo.svg" alt="Mysthron" className="w-14 h-14 mx-auto mb-3" />
+          <h1 className="text-lg font-semibold">เข้าสู่ระบบ Mysthron</h1>
         </div>
         <form onSubmit={handleLogin} className="space-y-4">
           <div>

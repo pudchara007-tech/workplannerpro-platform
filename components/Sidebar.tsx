@@ -29,7 +29,8 @@ export default function Sidebar({ displayName }: { displayName: string }) {
       {/* Mobile top bar */}
       <div className="md:hidden sticky top-0 z-30 flex items-center gap-3 px-4 h-14 bg-bg-1 border-b border-line">
         <button onClick={() => setOpen(true)} aria-label="เมนู" className="text-2xl leading-none">☰</button>
-        <span className="font-semibold">⚡ WorkPlannerPro</span>
+        <img src="/logo.svg" alt="Mysthron" className="w-7 h-7" />
+        <span className="font-semibold">Mysthron</span>
       </div>
 
       {/* Mobile overlay */}
@@ -38,8 +39,8 @@ export default function Sidebar({ displayName }: { displayName: string }) {
       {/* Sidebar (off-canvas on mobile, static on desktop) */}
       <aside className={`fixed md:sticky top-0 z-50 md:z-auto w-64 md:w-56 shrink-0 bg-bg-1 border-r border-line flex flex-col h-screen transition-transform duration-200 ${open ? "translate-x-0" : "-translate-x-full"} md:translate-x-0`}>
         <div className="px-4 py-4 flex items-center gap-2 border-b border-line">
-          <span className="text-xl">⚡</span>
-          <span className="font-semibold flex-1">WorkPlannerPro</span>
+          <img src="/logo.svg" alt="Mysthron" className="w-8 h-8" />
+          <span className="font-semibold flex-1">Mysthron</span>
           <button className="md:hidden text-xl text-gray-400" onClick={() => setOpen(false)} aria-label="ปิด">✕</button>
         </div>
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
