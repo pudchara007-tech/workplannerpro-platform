@@ -61,6 +61,7 @@ export default function ProjectDetailClient({ project }: { project: any }) {
   const [fStatus, setFStatus] = useState("all");
   const [inspBuilding, setInspBuilding] = useState("all");
   const [showForm, setShowForm] = useState(false);
+  const [fabOpen, setFabOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const buildings: string[] = project.buildings || [];
@@ -268,11 +269,28 @@ export default function ProjectDetailClient({ project }: { project: any }) {
         ))}
       </div>
 
-      {/* FAB เพิ่มงาน (มุมขวาล่าง) */}
-      <button onClick={() => setShowForm(true)} title="เพิ่มงาน" aria-label="เพิ่มงาน"
-        style={{ position: "fixed", right: 24, bottom: 24, zIndex: 60, width: 56, height: 56, borderRadius: "50%",
-          background: "var(--accent)", color: "#1a1a1a", border: "none", fontSize: 28, fontWeight: 700, lineHeight: 1,
-          cursor: "pointer", boxShadow: "0 4px 16px rgba(0,0,0,.4)", display: "flex", alignItems: "center", justifyContent: "center" }}>+</button>
+      {/* FAB เพิ่มงาน (มุมขวาล่าง) — กดแล้วกาง 2 หมวด */}
+      {fabOpen && <div onClick={() => setFabOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 55 }} />}
+      <div style={{ position: "fixed", right: 24, bottom: 24, zIndex: 60, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 12 }}>
+        {fabOpen && (
+          <>
+            <button onClick={() => { setFabOpen(false); setShowForm(true); }}
+              style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 16px", borderRadius: 24, border: "1px solid var(--border)",
+                background: "var(--bg-2)", color: "var(--text-1)", fontSize: 14, fontWeight: 600, cursor: "pointer", boxShadow: "0 2px 10px rgba(0,0,0,.35)" }}>
+              📋 เพิ่มงานปกติ
+            </button>
+            <button onClick={() => { setFabOpen(false); setView("inspection"); openZoneForm(); }}
+              style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 16px", borderRadius: 24, border: "1px solid var(--border)",
+                background: "var(--bg-2)", color: "var(--text-1)", fontSize: 14, fontWeight: 600, cursor: "pointer", boxShadow: "0 2px 10px rgba(0,0,0,.35)" }}>
+              🔍 เพิ่มงานส่งตรวจ
+            </button>
+          </>
+        )}
+        <button onClick={() => setFabOpen((o) => !o)} title="เพิ่มงาน" aria-label="เพิ่มงาน"
+          style={{ width: 56, height: 56, borderRadius: "50%", background: "var(--accent)", color: "#1a1a1a", border: "none",
+            fontSize: 26, fontWeight: 700, lineHeight: 1, cursor: "pointer", boxShadow: "0 4px 16px rgba(0,0,0,.4)",
+            display: "flex", alignItems: "center", justifyContent: "center", transition: "transform .2s", transform: fabOpen ? "rotate(45deg)" : "none" }}>+</button>
+      </div>
 
       {/* เพิ่มงาน modal */}
       {showForm && (
