@@ -26,6 +26,13 @@ const SYSTEMS = [
   { id: "other", label: "อื่นๆ", icon: "📋" },
 ];
 const floorLabelShort = (f: string | null) => (f === "Basement" ? "B" : f || "");
+const fmtShort = (d: string | null) => { if (!d) return ""; const x = new Date(d); return `${x.getDate()}/${x.getMonth() + 1}/${String(x.getFullYear() + 543).slice(-2)}`; };
+const roomKeyOf = (rt: any[]) => {
+  const ps = rt.filter((t) => (t.inspection_result || "pending") === "passed").length;
+  if (ps === rt.length) return "passed";
+  if (rt.some((t) => t.inspection_result === "failed")) return "failed";
+  return ps > 0 ? "rework" : "pending";
+};
 const INSP_BG: Record<string, { bg: string; fg: string }> = {
   passed: { bg: "rgba(34,197,94,0.20)", fg: "#4ade80" },
   failed: { bg: "rgba(239,68,68,0.20)", fg: "#f87171" },
@@ -86,9 +93,23 @@ export default function ProjectDetailClient({ project }: { project: any }) {
     await supabase.from("tasks").update(patch).eq("id", id);
   }
 
-  // ── inspection: หมวด + ขยายห้อง ──
+  // ── inspection: หมวด + ขยายห้อง + modal ห้อง ──
   const [inspCat, setInspCat] = useState<"all" | "common" | "room">("all");
   const [expZones, setExpZones] = useState<Record<string, boolean>>({});
+  const [roomModal, setRoomModal] = useState<any>(null);
+
+  async function setRoomStatus(t: any, status: string) {
+    const patch: any = { inspection_result: status };
+    if (status === "passed" && !t.insp_completed) patch.insp_completed = today;
+    setTasks((p) => p.map((x: any) => (x.id === t.id ? { ...x, ...patch } : x)));
+    setRoomModal((m: any) => (m ? { ...m, tasks: m.tasks.map((x: any) => (x.id === t.id ? { ...x, ...patch } : x)) } : m));
+    await supabase.from("tasks").update(patch).eq("id", t.id);
+  }
+  async function setRoomDate(t: any, date: string) {
+    setTasks((p) => p.map((x: any) => (x.id === t.id ? { ...x, insp_completed: date || null } : x)));
+    setRoomModal((m: any) => (m ? { ...m, tasks: m.tasks.map((x: any) => (x.id === t.id ? { ...x, insp_completed: date || null } : x)) } : m));
+    await supabase.from("tasks").update({ insp_completed: date || null }).eq("id", t.id);
+  }
   // ── inspection builder: เพิ่ม/ลบ พื้นที่ ──
   const [zoneForm, setZoneForm] = useState<any>(null);
   function openZoneForm() {
@@ -298,7 +319,46 @@ export default function ProjectDetailClient({ project }: { project: any }) {
               ))}
             </div>
             {insp.length === 0 ? (
-              <div className="day-detail muted">ยังไม่มีข้อมูล matrix — ต้อง <strong>re-import KARON</strong> หลังรัน migration 004 (งานส่งตรวจเดิมยังไม่มี zone/system)</div>
+              <div className="day-detail muted">ยังไม่มีข้อมูล matrix — ต้อง <strong>re-import KARON</strong> หลังรัน migration (งานส่งตรวจเดิมยังไม่มี zone/system)</div>
+            ) : inspCat === "room" ? (
+              /* ── การ์ดห้องพัก ── */
+              bldgs.map((b) => {
+                const bRoom = insp.filter((t: any) => t.building === b && t.zone_type === "room");
+                if (bRoom.length === 0) return null;
+                const fls = [...new Set(bRoom.map((t: any) => t.floor))].sort((a: any, c: any) => (a === "Basement" ? -1 : c === "Basement" ? 1 : parseInt(a) - parseInt(c)));
+                return (
+                  <div key={b} style={{ marginBottom: 18 }}>
+                    <div className="building-name" style={{ marginBottom: 8 }}>📋 อาคาร {b}</div>
+                    {fls.map((f) => {
+                      const rooms = [...new Set(bRoom.filter((t: any) => t.floor === f).map((t: any) => t.room_number).filter(Boolean))].sort();
+                      return (
+                        <div key={f} style={{ marginBottom: 12 }}>
+                          <div className="floor-title" style={{ marginBottom: 6 }}>ชั้น {f} ({rooms.length} ห้อง)</div>
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(120px,1fr))", gap: 8 }}>
+                            {rooms.map((rm: any) => {
+                              const rt = bRoom.filter((t: any) => t.floor === f && t.room_number === rm);
+                              const ps = rt.filter((t: any) => (t.inspection_result || "pending") === "passed").length;
+                              const key = roomKeyOf(rt); const col = INSP_BG[key];
+                              const dates = rt.map((t: any) => t.insp_completed || t.insp_scheduled).filter(Boolean).sort();
+                              const date = dates[dates.length - 1];
+                              return (
+                                <button key={rm} onClick={() => setRoomModal({ building: b, floor: f, room: rm, tasks: rt })}
+                                  style={{ textAlign: "left", padding: "8px 10px", borderRadius: 8, border: `1px solid ${col.fg === "var(--text-mute)" ? "var(--border)" : col.fg}`, background: col.bg, cursor: "pointer" }}>
+                                  <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, fontSize: 13 }}>
+                                    <span style={{ color: "var(--text-1)" }}>{rm}</span>
+                                    <span style={{ color: col.fg }}>{INSP_ICON[key]} {ps}/{rt.length}</span>
+                                  </div>
+                                  {date && <div style={{ fontSize: 10, color: "var(--text-3)", marginTop: 4 }}>{key === "passed" ? "✓" : "→"} {fmtShort(date)}</div>}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })
             ) : bldgs.map((b) => {
               const bTasks = insp.filter((t: any) => t.building === b);
               // zones unique
@@ -454,6 +514,37 @@ export default function ProjectDetailClient({ project }: { project: any }) {
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {regular.filter((t) => (fBuilding === "all" || t.building === fBuilding) && (fTeam === "all" || t.team === fTeam) && (fStatus === "all" || (fStatus === "done" ? t.done : !t.done))).map(TaskCard)}
+          </div>
+        </div>
+      )}
+
+      {/* รายละเอียดห้องพัก modal */}
+      {roomModal && (
+        <div className="modal-overlay active" onClick={(e) => { if (e.target === e.currentTarget) setRoomModal(null); }}>
+          <div className="modal">
+            <div className="modal-header">
+              <div className="modal-title">🚪 ห้อง {roomModal.room}</div>
+              <button className="modal-close" onClick={() => setRoomModal(null)}>×</button>
+            </div>
+            <div className="modal-body" style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: "70vh", overflowY: "auto" }}>
+              <div className="muted" style={{ fontSize: 13 }}>📋 อาคาร {roomModal.building} · ชั้น {roomModal.floor}</div>
+              {SYSTEMS.filter((s) => roomModal.tasks.some((t: any) => t.system === s.id)).map((s) => {
+                const t = roomModal.tasks.find((x: any) => x.system === s.id);
+                const st = t.inspection_result || "pending"; const meta = inspMeta(st);
+                return (
+                  <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <span style={{ flex: 1, minWidth: 130, fontSize: 13 }}>{s.icon} {s.label}</span>
+                    <button className="header-btn" onClick={() => setRoomStatus(t, INSP_CYCLE[(INSP_CYCLE.indexOf(st) + 1) % INSP_CYCLE.length])}
+                      style={{ minWidth: 90, color: meta.cls && st !== "pending" ? (INSP_BG[st]?.fg) : "var(--text-2)", borderColor: st === "pending" ? "var(--border)" : INSP_BG[st]?.fg }}>
+                      {INSP_ICON[st]} {meta.label}
+                    </button>
+                    <input type="date" className="form-input" style={{ maxWidth: 150, padding: "4px 8px" }} value={t.insp_completed || ""} onChange={(e) => setRoomDate(t, e.target.value)} />
+                  </div>
+                );
+              })}
+              <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>📝 หมายเหตุ + 📷 รูปประกอบ — เร็ว ๆ นี้</div>
+              <button className="header-btn primary" style={{ marginTop: 6 }} onClick={() => setRoomModal(null)}>ปิด</button>
+            </div>
           </div>
         </div>
       )}

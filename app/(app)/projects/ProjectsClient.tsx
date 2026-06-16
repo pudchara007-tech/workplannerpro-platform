@@ -133,6 +133,8 @@ export default function ProjectsClient() {
           room_number: t.roomNumber || null,
           system: t.system || null,
           system_name: t.systemName || null,
+          insp_completed: ov.inspectionCompletedDate || t.inspectionCompletedDate || null,
+          insp_scheduled: ov.inspectionScheduledDate || t.inspectionScheduledDate || null,
           created_by: user.id,
         };
       };
