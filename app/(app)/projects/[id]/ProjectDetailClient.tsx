@@ -427,7 +427,7 @@ export default function ProjectDetailClient({ project }: { project: any }) {
 
       {/* รายอาคาร (board) */}
       {view === "buildings" && (
-        <div className="building-grid" style={{ marginTop: 16 }}>
+        <div className="building-grid" style={{ marginTop: 16, gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", alignItems: "start" }}>
           {[...new Set(regular.map((t) => t.building).filter(Boolean))].sort().map((b) => {
             const bTasks = regular.filter((t) => t.building === b);
             const fls = [...new Set(bTasks.map((t) => t.floor).filter(Boolean))].sort((a: any, c: any) => (a === "Basement" ? -1 : c === "Basement" ? 1 : parseInt(a) - parseInt(c)));

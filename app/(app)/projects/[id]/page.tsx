@@ -9,7 +9,7 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
   if (!project) notFound();
 
   return (
-    <div className="max-w-5xl">
+    <div className="max-w-7xl">
       <Link href="/projects" className="text-sm text-gray-400 hover:text-brand">← โครงการทั้งหมด</Link>
       <div className="flex items-center gap-3 mt-2 mb-6">
         <span className="w-11 h-11 rounded-lg flex items-center justify-center text-2xl" style={{ background: (project.color || "#3b82f6") + "22" }}>{project.icon || "🏗️"}</span>
