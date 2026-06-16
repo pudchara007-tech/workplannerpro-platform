@@ -21,8 +21,10 @@ function Bar({ pct }: { pct: number }) {
 const WEATHER: Record<string, string> = { sunny: "☀️", cloudy: "⛅", rain: "🌧️", storm: "⛈️", hot: "🥵" };
 const TH_DOW = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
 
-export default async function ReportPage({ params, searchParams }: { params: { id: string }; searchParams: { type?: string } }) {
+export default async function ReportPage({ params, searchParams }: { params: { id: string }; searchParams: { type?: string; from?: string; to?: string; photos?: string; print?: string } }) {
   const weekly = searchParams?.type === "weekly";
+  const withPhotos = searchParams?.photos === "1";
+  const autoPrint = searchParams?.print === "1";
   const supabase = createClient();
   const { data: project } = await supabase.from("projects").select("*").eq("id", params.id).single();
   if (!project) notFound();
@@ -52,11 +54,17 @@ export default async function ReportPage({ params, searchParams }: { params: { i
   const now = new Date();
   const dateStr = `${fmt(today)} เวลา ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")} น.`;
 
-  // weekly: 7-day window + weather
+  // weekly: 7-day window (from→to if given) + weather
   const weatherLog: Record<string, string> = project.settings?.weatherLog || {};
   const weekDays: string[] = [];
-  for (let i = 6; i >= 0; i--) { const d = new Date(); d.setDate(d.getDate() - i); weekDays.push(d.toISOString().slice(0, 10)); }
+  if (searchParams?.from && searchParams?.to) {
+    const c = new Date(searchParams.from), e = new Date(searchParams.to);
+    while (c <= e) { weekDays.push(c.toISOString().slice(0, 10)); c.setDate(c.getDate() + 1); }
+  } else {
+    for (let i = 6; i >= 0; i--) { const d = new Date(); d.setDate(d.getDate() - i); weekDays.push(d.toISOString().slice(0, 10)); }
+  }
   const tasksOnDay = (ds: string) => regular.filter((t: any) => t.start_date && t.end_date && t.start_date <= ds && t.end_date >= ds);
+  const photoTasks = regular.filter((t: any) => Array.isArray(t.photos) && t.photos.length > 0);
 
   const statusBadge = (t: any) => {
     if (t.done) return { t: "✅ เสร็จแล้ว", bg: "#dcfce7", c: "#15803d" };
@@ -95,7 +103,7 @@ export default async function ReportPage({ params, searchParams }: { params: { i
           .rp-table tr { break-inside: avoid; }
         }
       `}</style>
-      <ReportActions id={params.id} />
+      <ReportActions id={params.id} autoPrint={autoPrint} withPhotos={withPhotos} />
 
       <div style={{ display: "flex", alignItems: "center", gap: 14, borderBottom: "3px solid var(--accent)", paddingBottom: 12, marginBottom: 6 }}>
         <div style={{ flex: 1 }}>
@@ -198,6 +206,23 @@ export default async function ReportPage({ params, searchParams }: { params: { i
           })}
         </tbody>
       </table>
+
+      {withPhotos && photoTasks.length > 0 && (
+        <>
+          <div className="rp-sec" style={{ pageBreakBefore: "always" }}>📷 รูปประกอบงาน ({photoTasks.length} งาน)</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 14 }}>
+            {photoTasks.map((t: any) => (
+              <div key={t.id} style={{ border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden", breakInside: "avoid" }}>
+                <img src={t.photos[t.photos.length - 1]} alt="" style={{ width: "100%", height: 200, objectFit: "cover", display: "block" }} />
+                <div style={{ padding: "6px 10px", fontSize: 12 }}>
+                  <strong>{t.name}</strong>
+                  <div style={{ color: "var(--text-3)" }}>อาคาร {t.building || "-"} · {t.floor === "Basement" ? "ใต้ดิน" : "ชั้น " + (t.floor || "-")}{t.team ? " · " + t.team : ""}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
 
       <div style={{ marginTop: 36, display: "flex", justifyContent: "flex-end" }}>
         <div style={{ textAlign: "center", fontSize: 13, borderTop: "1px solid var(--text-2)", width: 220, paddingTop: 6 }}>ผู้จัดทำรายงาน</div>

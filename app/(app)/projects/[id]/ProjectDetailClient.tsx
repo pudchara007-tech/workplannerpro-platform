@@ -75,6 +75,9 @@ export default function ProjectDetailClient({ project }: { project: any }) {
   const [showForm, setShowForm] = useState(false);
   const [fabOpen, setFabOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [exportModal, setExportModal] = useState<null | "weekly" | "full">(null);
+  const [exportPhotos, setExportPhotos] = useState(false);
+  const [weekOffset, setWeekOffset] = useState(0);
 
   const buildings: string[] = project.buildings || [];
   const floors: string[] = project.floors || [];
@@ -216,6 +219,20 @@ export default function ProjectDetailClient({ project }: { project: any }) {
     if (!confirm("ลบงานนี้?")) return;
     setTasks((p) => p.filter((x) => x.id !== id));
     await supabase.from("tasks").delete().eq("id", id);
+  }
+  const photoTaskCount = tasks.filter((t) => Array.isArray(t.photos) && t.photos.length > 0).length;
+  function weekRange(offset: number) {
+    const d = new Date(); const dow = (d.getDay() + 6) % 7; // 0=Mon
+    const mon = new Date(d); mon.setDate(d.getDate() - dow + offset * 7);
+    const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+    return { from: ymd(mon), to: ymd(sun) };
+  }
+  function doExport() {
+    const p = new URLSearchParams({ print: "1" });
+    if (exportPhotos) p.set("photos", "1");
+    if (exportModal === "weekly") { p.set("type", "weekly"); const { from, to } = weekRange(weekOffset); p.set("from", from); p.set("to", to); }
+    setExportModal(null);
+    window.open(`/projects/${project.id}/report?${p.toString()}`, "_blank");
   }
   async function pushDay(t: Task) {
     if (!t.end_date) return;
@@ -685,8 +702,8 @@ export default function ProjectDetailClient({ project }: { project: any }) {
           <div style={{ marginTop: 16 }}>
             {/* ปุ่มออกรายงาน */}
             <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
-              <a href={`/projects/${project.id}/report?type=weekly`} className="header-btn primary">📅 Export Weekly PDF</a>
-              <a href={`/projects/${project.id}/report`} className="header-btn primary">📄 Export Full PDF</a>
+              <button className="header-btn primary" onClick={() => { setExportPhotos(false); setWeekOffset(0); setExportModal("weekly"); }}>📅 Export Weekly PDF</button>
+              <button className="header-btn primary" onClick={() => { setExportPhotos(false); setExportModal("full"); }}>📄 Export Full PDF</button>
             </div>
             <div className="kpi-row" style={{ padding: 0, marginBottom: 14 }}>
               <div className="kpi"><div className="kpi-label">ตามแผนวันนี้</div><div className="kpi-value" style={{ color: "var(--accent)" }}>{tPlanned.toFixed(1)}%</div></div>
@@ -920,6 +937,51 @@ export default function ProjectDetailClient({ project }: { project: any }) {
           </div>
         </div>
       )}
+
+      {/* Export options modal */}
+      {exportModal && (() => {
+        const wr = weekRange(weekOffset);
+        return (
+          <div className="modal-overlay active" onClick={(e) => { if (e.target === e.currentTarget) setExportModal(null); }}>
+            <div className="modal" style={{ maxWidth: 460 }}>
+              <div className="modal-header">
+                <div className="modal-title">{exportModal === "weekly" ? "📅 Export Weekly Report" : "📄 Export Full Report"}</div>
+                <button className="modal-close" onClick={() => setExportModal(null)}>×</button>
+              </div>
+              <div className="modal-body" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                {exportModal === "weekly" && (
+                  <div style={{ textAlign: "center" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+                      <button className="header-btn" onClick={() => setWeekOffset((w) => w - 1)}>‹</button>
+                      <div>
+                        <div className="muted" style={{ fontSize: 12 }}>สัปดาห์ของวันที่</div>
+                        <strong>{fmtShort(wr.from)} - {fmtShort(wr.to)}</strong>
+                      </div>
+                      <button className="header-btn" onClick={() => setWeekOffset((w) => w + 1)}>›</button>
+                    </div>
+                    {weekOffset !== 0 && <button className="header-btn" style={{ marginTop: 6, fontSize: 12 }} onClick={() => setWeekOffset(0)}>กลับสัปดาห์นี้</button>}
+                  </div>
+                )}
+                <div>
+                  <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>{photoTaskCount > 0 ? `พบ ${photoTaskCount} งานที่มีรูป (ใช้รูปล่าสุด 1 รูป/งาน)` : "ไม่มีงานที่แนบรูปในรายงานนี้"}</div>
+                  <label style={{ display: "flex", gap: 10, padding: 10, border: `1px solid ${exportPhotos ? "var(--accent)" : "var(--border)"}`, borderRadius: 8, cursor: "pointer" }}>
+                    <input type="radio" checked={!exportPhotos} onChange={() => setExportPhotos(false)} />
+                    <div><strong>📋 เฉพาะตาราง</strong><div className="muted" style={{ fontSize: 12 }}>ส่งออกเร็ว ไม่มีรูป</div></div>
+                  </label>
+                  <label style={{ display: "flex", gap: 10, padding: 10, marginTop: 8, border: `1px solid ${exportPhotos ? "var(--accent)" : "var(--border)"}`, borderRadius: 8, cursor: "pointer", opacity: photoTaskCount > 0 ? 1 : 0.5 }}>
+                    <input type="radio" checked={exportPhotos} disabled={photoTaskCount === 0} onChange={() => setExportPhotos(true)} />
+                    <div><strong>📷 รวมรูปใน PDF</strong><div className="muted" style={{ fontSize: 12 }}>PDF มีรูปประกอบ (โหลดเพิ่ม 10-30 วินาที)</div></div>
+                  </label>
+                </div>
+              </div>
+              <div className="modal-footer" style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                <button className="header-btn" onClick={() => setExportModal(null)}>ยกเลิก</button>
+                <button className="header-btn primary" onClick={doExport}>Export PDF</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* แก้ไขงาน modal */}
       {editTask && (
