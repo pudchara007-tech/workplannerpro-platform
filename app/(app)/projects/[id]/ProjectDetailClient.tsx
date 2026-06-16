@@ -40,7 +40,31 @@ export default function ProjectDetailClient({ project }: { project: any }) {
   const teams: string[] = (project.teams || []).map((t: any) => (typeof t === "string" ? t : t.name));
   const blank = { name: "", building: buildings[0] || "", floor: floors[0] || "", team: teams[0] || "", start_date: "", end_date: "", note: "" };
   const [nf, setNf] = useState(blank);
+  const [editTask, setEditTask] = useState<Task | null>(null);
+  const [ef, setEf] = useState<any>({});
+  const cats: any[] = project.categories || [];
   const today = ymd(new Date());
+
+  function openEdit(t: Task) {
+    const a = t as any;
+    setEditTask(t);
+    setEf({ name: t.name || "", building: t.building || "", floor: t.floor || "", team: t.team || "",
+      start_date: t.start_date || "", end_date: t.end_date || "", category: a.category || "",
+      person_count: a.person_count ?? "", blocked: !!t.blocked, materials: a.materials || "", note: t.note || "" });
+  }
+  async function saveEdit() {
+    if (!editTask) return;
+    const patch: any = {
+      name: ef.name.trim() || editTask.name, building: ef.building || null, floor: ef.floor || null, team: ef.team || null,
+      start_date: ef.start_date || null, end_date: ef.end_date || null, category: ef.category || null,
+      person_count: ef.person_count === "" ? null : Number(ef.person_count), blocked: !!ef.blocked,
+      materials: ef.materials || null, note: ef.note || null, updated_at: new Date().toISOString(),
+    };
+    setTasks((p) => p.map((x) => (x.id === editTask.id ? ({ ...x, ...patch } as Task) : x)));
+    const id = editTask.id;
+    setEditTask(null);
+    await supabase.from("tasks").update(patch).eq("id", id);
+  }
 
   const load = useCallback(async () => {
     const { data } = await supabase.from("tasks").select("*").eq("project_id", project.id).order("start_date");
@@ -103,7 +127,7 @@ export default function ProjectDetailClient({ project }: { project: any }) {
     return (
       <div key={t.id} className={`task ${cls}`}>
         <button className={`task-status ${t.done ? "done" : ""}`} onClick={() => toggle(t)} title="ติ๊กเสร็จ">{t.done ? "✓" : ""}</button>
-        <div className="task-body">
+        <div className="task-body" style={{ cursor: "pointer" }} onClick={() => openEdit(t)}>
           <div className="task-title-row"><span className="task-title">{t.name}</span></div>
           <div className="task-meta">
             <span className="task-loc">อาคาร {t.building} · {floorLabel(t.floor)}</span>
@@ -310,6 +334,57 @@ export default function ProjectDetailClient({ project }: { project: any }) {
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {regular.filter((t) => (fBuilding === "all" || t.building === fBuilding) && (fTeam === "all" || t.team === fTeam) && (fStatus === "all" || (fStatus === "done" ? t.done : !t.done))).map(TaskCard)}
+          </div>
+        </div>
+      )}
+
+      {/* แก้ไขงาน modal */}
+      {editTask && (
+        <div className="modal-overlay active" onClick={(e) => { if (e.target === e.currentTarget) setEditTask(null); }}>
+          <div className="modal">
+            <div className="modal-header">
+              <div className="modal-title">✏️ แก้ไขงาน</div>
+              <button className="modal-close" onClick={() => setEditTask(null)}>×</button>
+            </div>
+            <div className="modal-body" style={{ display: "flex", flexDirection: "column", gap: 12, maxHeight: "70vh", overflowY: "auto" }}>
+              <div className="form-group"><label className="form-label">ชื่องาน</label>
+                <input className="form-input" value={ef.name} onChange={(e) => setEf({ ...ef, name: e.target.value })} /></div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                <div className="form-group"><label className="form-label">อาคาร</label>
+                  <select className="form-input" value={ef.building} onChange={(e) => setEf({ ...ef, building: e.target.value })}>{buildings.map((b) => <option key={b} value={b}>{b}</option>)}</select></div>
+                <div className="form-group"><label className="form-label">ชั้น</label>
+                  <select className="form-input" value={ef.floor} onChange={(e) => setEf({ ...ef, floor: e.target.value })}>{floors.map((fl) => <option key={fl} value={fl}>{fl}</option>)}</select></div>
+                <div className="form-group"><label className="form-label">ทีม</label>
+                  <select className="form-input" value={ef.team} onChange={(e) => setEf({ ...ef, team: e.target.value })}>{teams.map((t) => <option key={t} value={t}>{t}</option>)}</select></div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <div className="form-group"><label className="form-label">เริ่ม</label>
+                  <input type="date" className="form-input" value={ef.start_date} onChange={(e) => setEf({ ...ef, start_date: e.target.value })} /></div>
+                <div className="form-group"><label className="form-label">เสร็จ</label>
+                  <input type="date" className="form-input" value={ef.end_date} onChange={(e) => setEf({ ...ef, end_date: e.target.value })} /></div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                {cats.length > 0 && (
+                  <div className="form-group"><label className="form-label">หมวดงาน</label>
+                    <select className="form-input" value={ef.category} onChange={(e) => setEf({ ...ef, category: e.target.value })}>
+                      <option value="">—</option>{cats.map((c: any) => <option key={c.id || c} value={c.id || c}>{(c.icon ? c.icon + " " : "") + (c.name || c)}</option>)}
+                    </select></div>
+                )}
+                <div className="form-group"><label className="form-label">จำนวนคน</label>
+                  <input type="number" className="form-input" value={ef.person_count} onChange={(e) => setEf({ ...ef, person_count: e.target.value })} placeholder="—" /></div>
+              </div>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--text-2)" }}>
+                <input type="checkbox" checked={ef.blocked} onChange={(e) => setEf({ ...ef, blocked: e.target.checked })} /> 🚧 รอของ/ติดปัญหา (blocked)
+              </label>
+              <div className="form-group"><label className="form-label">วัสดุ / รายการของ</label>
+                <textarea className="form-input" rows={2} value={ef.materials} onChange={(e) => setEf({ ...ef, materials: e.target.value })} placeholder="รายการวัสดุที่ต้องใช้/สั่ง" style={{ resize: "vertical" }} /></div>
+              <div className="form-group"><label className="form-label">หมายเหตุ</label>
+                <textarea className="form-input" rows={2} value={ef.note} onChange={(e) => setEf({ ...ef, note: e.target.value })} style={{ resize: "vertical" }} /></div>
+              <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                <button className="header-btn primary" style={{ flex: 1 }} onClick={saveEdit}>บันทึก</button>
+                <button className="header-btn danger" onClick={() => { const id = editTask.id; setEditTask(null); del(id); }}>ลบ</button>
+              </div>
+            </div>
           </div>
         </div>
       )}
