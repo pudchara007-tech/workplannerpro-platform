@@ -26,6 +26,15 @@ const SYSTEMS = [
   { id: "other", label: "อื่นๆ", icon: "📋" },
 ];
 const floorLabelShort = (f: string | null) => (f === "Basement" ? "B" : f || "");
+const INSP_BG: Record<string, { bg: string; fg: string }> = {
+  passed: { bg: "rgba(34,197,94,0.20)", fg: "#4ade80" },
+  failed: { bg: "rgba(239,68,68,0.20)", fg: "#f87171" },
+  rework: { bg: "rgba(245,158,11,0.20)", fg: "#fbbf24" },
+  pending: { bg: "transparent", fg: "var(--text-mute)" },
+};
+const CELL_TD: any = { height: 46, minWidth: 76, textAlign: "center", border: "1px solid var(--border)", cursor: "pointer", padding: 0, fontWeight: 700 };
+const HEAD_TD: any = { textAlign: "center", padding: "6px 4px", border: "1px solid var(--border)", background: "var(--bg-3)", color: "var(--text-2)" };
+const ROW_TD: any = { textAlign: "left", padding: "8px 10px", border: "1px solid var(--border)", fontSize: 12, whiteSpace: "nowrap", background: "var(--bg-1)" };
 const TH_MONTHS = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
 const TH_DOW = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
 function ymd(d: Date) {
@@ -292,32 +301,32 @@ export default function ProjectDetailClient({ project }: { project: any }) {
                 <div key={b} style={{ marginBottom: 20 }}>
                   <div className="building-name" style={{ marginBottom: 8 }}>📋 อาคาร {b}</div>
                   <div style={{ overflowX: "auto" }}>
-                    <table className="print-room-table" style={{ minWidth: 640 }}>
+                    <table style={{ minWidth: 700, borderCollapse: "collapse", width: "100%" }}>
                       <thead><tr>
-                        <th style={{ textAlign: "left", minWidth: 130 }}>พื้นที่</th>
-                        {SYSTEMS.map((s) => <th key={s.id} title={s.label}><div style={{ fontSize: 14 }}>{s.icon}</div><div style={{ fontSize: 8, fontWeight: 400 }}>{s.label}</div></th>)}
+                        <th style={{ ...HEAD_TD, textAlign: "left", minWidth: 140 }}>พื้นที่</th>
+                        {SYSTEMS.map((s) => <th key={s.id} title={s.label} style={HEAD_TD}><div style={{ fontSize: 15 }}>{s.icon}</div><div style={{ fontSize: 9, fontWeight: 400 }}>{s.label}</div></th>)}
                       </tr></thead>
                       <tbody>
                         {zones.map((z: any) => (
                           <tr key={z.id}>
-                            <td className="td-room">{floorLabelShort(z.floor)} · {z.name}
-                              <button onClick={() => deleteZone(z.id, z.name)} title="ลบพื้นที่" style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-mute)", marginLeft: 4 }}>🗑</button>
+                            <td style={ROW_TD}>{floorLabelShort(z.floor)} · {z.name}
+                              <button onClick={() => deleteZone(z.id, z.name)} title="ลบพื้นที่" style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-mute)", marginLeft: 6 }}>🗑</button>
                             </td>
                             {SYSTEMS.map((s) => {
                               const cells = bTasks.filter((t: any) => t.zone_id === z.id && t.system === s.id);
-                              if (cells.length === 0) return <td key={s.id} style={{ color: "var(--text-mute)" }}>—</td>;
+                              if (cells.length === 0) return <td key={s.id} style={{ ...CELL_TD, cursor: "default", color: "var(--text-mute)", background: "rgba(255,255,255,0.02)" }}>—</td>;
                               if (z.type === "room" && cells.length > 1) {
                                 const ps = cells.filter((c: any) => (c.inspection_result || "pending") === "passed").length;
-                                const allPass = ps === cells.length;
-                                return <td key={s.id} className={allPass ? "ps-passed-bg" : ""} style={{ fontSize: 11, fontWeight: 700 }}>{ps}/{cells.length}</td>;
+                                const hasFail = cells.some((c: any) => c.inspection_result === "failed");
+                                const key = ps === cells.length ? "passed" : hasFail ? "failed" : ps > 0 ? "rework" : "pending";
+                                const col = INSP_BG[key];
+                                return <td key={s.id} style={{ ...CELL_TD, cursor: "default", background: col.bg, color: col.fg, fontSize: 12 }}>{ps}/{cells.length}</td>;
                               }
                               const t = cells[0];
                               const st = t.inspection_result || "pending";
+                              const col = INSP_BG[st] || INSP_BG.pending;
                               return (
-                                <td key={s.id} onClick={() => cycleCell(t)} title={INSP_STATUS[st]?.label} style={{ cursor: "pointer" }}
-                                  className={st === "passed" ? "ps-passed-bg" : st === "failed" ? "ps-failed-bg" : st === "rework" ? "ps-rework-bg" : ""}>
-                                  <span style={{ fontWeight: 700 }}>{INSP_ICON[st]}</span>
-                                </td>
+                                <td key={s.id} onClick={() => cycleCell(t)} title={INSP_STATUS[st]?.label} style={{ ...CELL_TD, background: col.bg, color: col.fg, fontSize: 16 }}>{INSP_ICON[st]}</td>
                               );
                             })}
                           </tr>
