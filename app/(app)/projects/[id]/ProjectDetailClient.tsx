@@ -48,6 +48,14 @@ const TH_DOW = ["อา.", "จ.", "อ.", "พ.", "พฤ.", "ศ.", "ส."];
 function ymd(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
+const WEATHER_OPTIONS = [
+  { key: "sunny", icon: "☀️", label: "แดด", color: "#f59e0b" },
+  { key: "cloudy", icon: "⛅", label: "มีเมฆ", color: "#94a3b8" },
+  { key: "rain", icon: "🌧️", label: "ฝน", color: "#3b82f6" },
+  { key: "storm", icon: "⛈️", label: "ฝนหนัก/พายุ", color: "#6366f1" },
+  { key: "hot", icon: "🥵", label: "ร้อนจัด", color: "#ef4444" },
+];
+const findWeather = (k: string) => WEATHER_OPTIONS.find((o) => o.key === k);
 
 export default function ProjectDetailClient({ project }: { project: any }) {
   const supabase = useMemo(() => createClient(), []);
@@ -56,6 +64,10 @@ export default function ProjectDetailClient({ project }: { project: any }) {
   const [view, setView] = useState<"daily" | "progress" | "inspection" | "buildings" | "issues" | "all" | "activity">("daily");
   const [calMonth, setCalMonth] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
   const [selDay, setSelDay] = useState<string>(ymd(new Date()));
+  const [dayTeam, setDayTeam] = useState("all");
+  const [weatherLog, setWeatherLog] = useState<Record<string, string>>(project.settings?.weatherLog || {});
+  const weekendDays: number[] = Array.isArray(project.settings?.weekendDays) ? project.settings.weekendDays : [0];
+  const holidayList: { date: string; label?: string }[] = Array.isArray(project.settings?.holidays) ? project.settings.holidays : [];
   const [fBuilding, setFBuilding] = useState("all");
   const [fTeam, setFTeam] = useState("all");
   const [fStatus, setFStatus] = useState("all");
@@ -212,6 +224,20 @@ export default function ProjectDetailClient({ project }: { project: any }) {
     setTasks((p) => p.map((x) => (x.id === t.id ? { ...x, end_date: ns } : x)));
     await supabase.from("tasks").update({ end_date: ns }).eq("id", t.id);
   }
+  function checkHoliday(ds: string): { isHoliday: boolean; type?: string; label?: string } {
+    const dow = new Date(ds).getDay();
+    if (weekendDays.includes(dow)) return { isHoliday: true, type: "weekend", label: "วันหยุดประจำสัปดาห์" };
+    const found = holidayList.find((h) => h.date === ds);
+    if (found) return { isHoliday: true, type: "custom", label: found.label || "วันหยุด" };
+    return { isHoliday: false };
+  }
+  async function setWeather(ds: string, key: string | null) {
+    const next = { ...weatherLog };
+    if (!key) delete next[ds]; else next[ds] = key;
+    setWeatherLog(next);
+    const settings = { ...(project.settings || {}), weatherLog: next };
+    await supabase.from("projects").update({ settings }).eq("id", project.id);
+  }
   async function updateInsp(t: Task, status: string) {
     setTasks((p) => p.map((x) => (x.id === t.id ? { ...x, inspection_result: status } : x)));
     await supabase.from("tasks").update({ inspection_result: status }).eq("id", t.id);
@@ -367,6 +393,14 @@ export default function ProjectDetailClient({ project }: { project: any }) {
       {/* DAILY */}
       {view === "daily" && (
         <div style={{ marginTop: 16 }}>
+          {/* ชิปกรองทีม */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+            <span className="muted" style={{ fontSize: 13 }}>กับ:</span>
+            <button className={`chip ${dayTeam === "all" ? "active" : ""}`} onClick={() => setDayTeam("all")}>ทั้งหมด</button>
+            {teams.map((t) => (
+              <button key={t} className={`chip ${dayTeam === t ? "active" : ""}`} onClick={() => setDayTeam(t)}>{t}</button>
+            ))}
+          </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
             <button className="header-btn" onClick={() => setCalMonth(new Date(year, month - 1, 1))}>‹</button>
             <strong style={{ minWidth: 120, textAlign: "center" }}>{TH_MONTHS[month]} {year + 543}</strong>
@@ -379,24 +413,48 @@ export default function ProjectDetailClient({ project }: { project: any }) {
             {Array.from({ length: daysInMonth }).map((_, i) => {
               const day = i + 1;
               const ds = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-              const dayTasks = tasksOnDay(ds);
+              const dayTasks = tasksOnDay(ds).filter((t) => dayTeam === "all" || t.team === dayTeam);
               const dayTeams = [...new Set(dayTasks.map((t) => t.team).filter(Boolean))].slice(0, 3) as string[];
-              const cls = ["cal-day", ds === today ? "today" : "", ds < today ? "past" : "", ds === selDay ? "selected" : ""].filter(Boolean).join(" ");
+              const hol = checkHoliday(ds);
+              const w = weatherLog[ds] ? findWeather(weatherLog[ds]) : null;
+              const cls = ["cal-day", ds === today ? "today" : "", ds < today ? "past" : "", ds === selDay ? "selected" : "",
+                hol.isHoliday ? "holiday" : "", hol.type === "custom" ? "custom-holiday" : ""].filter(Boolean).join(" ");
               return (
-                <div key={ds} className={cls} onClick={() => setSelDay(ds)}>
+                <div key={ds} className={cls} onClick={() => setSelDay(ds)} title={hol.isHoliday ? hol.label : undefined}>
                   <div className="cal-date">{day}<span className="cal-day-name">{TH_DOW[new Date(ds).getDay()]}</span></div>
+                  {w && <div className="cal-weather" title={w.label}>{w.icon}</div>}
+                  {hol.isHoliday && <div className="cal-holiday-badge" title={hol.label}>🏖️ หยุด</div>}
                   {dayTasks.length > 0 && <div className="cal-count">{dayTasks.length} งาน</div>}
                   <div className="cal-tags">{dayTeams.map((t) => <span key={t} className="cal-tag">{t}</span>)}</div>
                 </div>
               );
             })}
           </div>
-          <div className="day-detail" style={{ marginTop: 16 }}>
-            <h3 style={{ marginBottom: 10 }}>งานวันที่ {selDay} ({tasksOnDay(selDay).length})</h3>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {tasksOnDay(selDay).length ? tasksOnDay(selDay).map(TaskCard) : <div className="muted">ไม่มีงานวันนี้</div>}
-            </div>
-          </div>
+          {(() => {
+            const selHol = checkHoliday(selDay);
+            const selTasks = tasksOnDay(selDay).filter((t) => dayTeam === "all" || t.team === dayTeam);
+            return (
+              <div className="day-detail" style={{ marginTop: 16 }}>
+                {selHol.isHoliday && (
+                  <div className="day-holiday-banner" style={{ marginBottom: 10 }}>
+                    <span className="holiday-icon">🏖️</span> <strong>วันหยุด</strong> · {selHol.label}
+                  </div>
+                )}
+                <div className="weather-selector-row" style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
+                  <span className="weather-selector-label" style={{ fontSize: 13 }}>🌤️ สภาพอากาศ:</span>
+                  {WEATHER_OPTIONS.map((wo) => (
+                    <button key={wo.key} className={`header-btn ${weatherLog[selDay] === wo.key ? "primary" : ""}`} style={{ padding: "4px 8px" }}
+                      onClick={() => setWeather(selDay, wo.key)} title={wo.label}>{wo.icon}</button>
+                  ))}
+                  {weatherLog[selDay] && <button className="header-btn" style={{ padding: "4px 8px" }} onClick={() => setWeather(selDay, null)} title="ลบ">✕</button>}
+                </div>
+                <h3 style={{ marginBottom: 10 }}>งานวันที่ {selDay} ({selTasks.length})</h3>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {selTasks.length ? selTasks.map(TaskCard) : <div className="muted">ไม่มีงานวันนี้</div>}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
 
