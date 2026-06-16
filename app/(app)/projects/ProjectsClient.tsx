@@ -42,6 +42,13 @@ export default function ProjectsClient() {
 
   useEffect(() => { load(); }, [load]);
 
+  async function deleteProject(id: string, name: string) {
+    if (!confirm(`ลบโครงการ "${name}"? (งานทั้งหมดในโครงการนี้จะถูกลบด้วย)`)) return;
+    const { error } = await supabase.from("projects").delete().eq("id", id);
+    if (error) { alert("ลบไม่สำเร็จ: " + error.message); return; }
+    setProjects((p) => p.filter((x) => x.id !== id));
+  }
+
   async function createProject() {
     if (!f.name.trim()) return;
     setSaving(true);
@@ -211,20 +218,23 @@ export default function ProjectsClient() {
       {projects.length ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {projects.map((p) => (
-            <Link key={p.id} href={`/projects/${p.id}`}
-              className="card p-5 hover:border-brand/50 transition" style={{ borderLeftColor: p.color || "#3b82f6", borderLeftWidth: 3 }}>
-              <div className="flex items-center gap-3 mb-2">
-                <span className="w-10 h-10 rounded-lg flex items-center justify-center text-xl" style={{ background: (p.color || "#3b82f6") + "22" }}>{p.icon || "🏗️"}</span>
-                <div className="min-w-0">
-                  <div className="font-semibold truncate">{p.name}</div>
-                  {p.description && <div className="text-xs text-gray-400 truncate">{p.description}</div>}
+            <div key={p.id} className="card p-5 relative" style={{ borderLeftColor: p.color || "#3b82f6", borderLeftWidth: 3 }}>
+              <button onClick={() => deleteProject(p.id, p.name)} title="ลบโครงการ"
+                className="absolute top-2 right-2 text-gray-600 hover:text-red-400 text-sm z-10">🗑</button>
+              <Link href={`/projects/${p.id}`} className="block hover:opacity-90 transition">
+                <div className="flex items-center gap-3 mb-2">
+                  <span className="w-10 h-10 rounded-lg flex items-center justify-center text-xl" style={{ background: (p.color || "#3b82f6") + "22" }}>{p.icon || "🏗️"}</span>
+                  <div className="min-w-0">
+                    <div className="font-semibold truncate">{p.name}</div>
+                    {p.description && <div className="text-xs text-gray-400 truncate">{p.description}</div>}
+                  </div>
                 </div>
-              </div>
-              <div className="text-xs text-gray-500 flex gap-3">
-                <span>🏢 {(p.buildings || []).length} อาคาร</span>
-                <span>👥 {(p.teams || []).length} ทีม</span>
-              </div>
-            </Link>
+                <div className="text-xs text-gray-500 flex gap-3">
+                  <span>🏢 {(p.buildings || []).length} อาคาร</span>
+                  <span>👥 {(p.teams || []).length} ทีม</span>
+                </div>
+              </Link>
+            </div>
           ))}
         </div>
       ) : (
